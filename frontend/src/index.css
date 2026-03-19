@@ -1,0 +1,31 @@
+/* 1. All imports MUST be at the very top */
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* 2. Variables and custom styles come AFTER imports */
+:root {
+  --primary: #0f172a;
+  --accent: #3b82f6;
+  --success: #10b981;
+  --danger: #ef4444;
+  --bg-main: #f4f7fe; /* Updated to match Medicare dashboard bg */
+  --bg-card: #ffffff;
+  --text-main: #1B2559;
+  --text-muted: #A3AED0;
+  --border: #e2e8f0;
+  --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  --radius: 12px;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', sans-serif;
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: var(--bg-main); }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
