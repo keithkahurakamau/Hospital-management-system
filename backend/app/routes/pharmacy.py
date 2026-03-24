@@ -1,55 +1,114 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from typing import List, Optional
 from pydantic import BaseModel
-from typing import List
+from datetime import datetime, timezone
 from app.config.database import get_db
-from app.models.pharmacy import Drug
 
-router = APIRouter(prefix="/api/pharmacy", tags=["Pharmacy Inventory"])
+from app.models.inventory import StockBatch, InventoryItem, Location
+from app.models.pharmacy import DispenseLog
+from app.models.patient import Patient
 
-class DrugCreate(BaseModel):
-    name: str
-    sku: str
-    category: str
-    stock_quantity: int
-    reorder_level: int
-    unit_price: float
+router = APIRouter(prefix="/api/pharmacy", tags=["Pharmacy & OTC"])
 
-@router.get("/")
-def get_inventory(db: Session = Depends(get_db)):
-    """Fetches the complete pharmacy inventory."""
-    drugs = db.query(Drug).order_by(Drug.name).all()
-    return [
-        {
-            "id": d.drug_id,
-            "name": d.name,
-            "sku": d.sku,
-            "category": d.category,
-            "stock": d.stock_quantity,
-            "status": "Critical" if d.stock_quantity == 0 else "Low Stock" if d.stock_quantity <= d.reorder_level else "In Stock",
-            "price": float(d.unit_price)
-        } for d in drugs
-    ]
+# --- DATA TRANSFER OBJECTS (DTOs) ---
+class DispenseItemReq(BaseModel):
+    item_id: int
+    quantity: int
 
-@router.post("/", status_code=status.HTTP_201_CREATED)
-def add_new_drug(drug: DrugCreate, db: Session = Depends(get_db)):
-    """Registers a new medication into the system."""
-    new_drug = Drug(**drug.model_dump())
-    db.add(new_drug)
-    db.commit()
-    db.refresh(new_drug)
-    return new_drug
+class PrescriptionRequest(BaseModel):
+    patient_id: int
+    record_id: Optional[int] = None
+    pharmacist_id: int = 1 
+    payment_method: str = "Cash" # 'Cash' or 'M-PESA'
+    phone_number: Optional[str] = None
+    items: List[DispenseItemReq]
 
-@router.patch("/{drug_id}/dispense")
-def dispense_medication(drug_id: int, quantity: int = 1, db: Session = Depends(get_db)):
-    """Deducts stock when a prescription is fulfilled."""
-    drug = db.query(Drug).filter(Drug.drug_id == drug_id).first()
-    
-    if not drug:
-        raise HTTPException(status_code=404, detail="Medication not found")
-    if drug.stock_quantity < quantity:
-        raise HTTPException(status_code=400, detail=f"Insufficient stock. Only {drug.stock_quantity} remaining.")
-        
-    drug.stock_quantity -= quantity
-    db.commit()
-    return {"message": "Dispensed successfully", "remaining_stock": drug.stock_quantity}
+class WalkInSaleRequest(BaseModel):
+    pharmacist_id: int = 1
+    payment_method: str = "Cash"
+    phone_number: Optional[str] = None
+    items: List[DispenseItemReq]
+
+# --- CORE ALGORITHM: FEFO DEDUCTION ---
+def execute_fefo_dispensing(db: Session, item_id: int, required_qty: int, location_name: str, user_id: int, patient_id: Optional[int] = None, record_id: Optional[int] = None):
+    item = db.query(InventoryItem).filter(InventoryItem.item_id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail=f"InventoryItem ID {item_id} unrecognized.")
+
+    location = db.query(Location).filter(Location.name == location_name).first()
+    if not location:
+        raise HTTPException(status_code=404, detail=f"Location '{location_name}' unrecognized.")
+
+    batches = db.query(StockBatch).filter(
+        StockBatch.item_id == item_id,
+        StockBatch.location_id == location.location_id,
+        StockBatch.quantity > 0,
+        StockBatch.expiry_date > datetime.now(timezone.utc)
+    ).order_by(StockBatch.expiry_date.asc()).all()
+
+    total_available = sum(b.quantity for b in batches)
+    if total_available < required_qty:
+        raise HTTPException(status_code=400, detail=f"Deficit detected for {item.name}. Required: {required_qty}, Available: {total_available}")
+
+    remaining_qty = required_qty
+    logs = []
+
+    for batch in batches:
+        if remaining_qty <= 0: break
+        deduct_amount = min(batch.quantity, remaining_qty)
+        batch.quantity -= deduct_amount
+        remaining_qty -= deduct_amount
+
+        log = DispenseLog(
+            batch_id=batch.batch_id, patient_id=patient_id, record_id=record_id,
+            quantity_dispensed=deduct_amount, total_cost=deduct_amount * item.unit_price, dispensed_by=user_id
+        )
+        db.add(log)
+        logs.append(log)
+
+    return logs
+
+# --- ENDPOINTS ---
+@router.post("/dispense/prescription", status_code=status.HTTP_201_CREATED)
+def dispense_prescription(payload: PrescriptionRequest, db: Session = Depends(get_db)):
+    if payload.payment_method == "M-PESA" and not payload.phone_number:
+        raise HTTPException(status_code=400, detail="M-PESA STK Push requires a valid phone number.")
+
+    generated_logs = []
+    try:
+        # Note: Safaricom Daraja API STK Push logic would be invoked here synchronously.
+        for request_item in payload.items:
+            logs = execute_fefo_dispensing(db, request_item.item_id, request_item.quantity, "Pharmacy", payload.pharmacist_id, payload.patient_id, payload.record_id)
+            generated_logs.extend(logs)
+            
+        db.commit()
+        return {"status": "success", "dispensed_batches": len(generated_logs), "payment_method": payload.payment_method}
+    except Exception as e:
+        db.rollback() 
+        raise e
+
+@router.post("/dispense/walk-in", status_code=status.HTTP_201_CREATED)
+def process_walk_in_sale(payload: WalkInSaleRequest, db: Session = Depends(get_db)):
+    if payload.payment_method == "M-PESA" and not payload.phone_number:
+        raise HTTPException(status_code=400, detail="M-PESA STK Push requires a valid phone number.")
+
+    generated_logs = []
+    try:
+        for request_item in payload.items:
+            logs = execute_fefo_dispensing(db, request_item.item_id, request_item.quantity, "Pharmacy", payload.pharmacist_id, None, None)
+            generated_logs.extend(logs)
+            
+        db.commit()
+        return {"status": "success", "dispensed_batches": len(generated_logs), "payment_method": payload.payment_method}
+    except Exception as e:
+        db.rollback()
+        raise e
+
+@router.get("/catalog")
+def get_inventory_catalog(db: Session = Depends(get_db)):
+    return db.query(InventoryItem).filter(InventoryItem.is_active == True).all()
+
+@router.get("/patients")
+def get_patients(db: Session = Depends(get_db)):
+    return db.query(Patient).all()

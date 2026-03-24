@@ -1,79 +1,142 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
-from typing import Optional
+from sqlalchemy import or_, desc
+from pydantic import BaseModel, EmailStr
+from typing import List, Optional
+from datetime import datetime
 from app.config.database import get_db
 from app.models.patient import Patient
 
-router = APIRouter(prefix="/api/patients", tags=["Patients"])
+router = APIRouter(prefix="/api/patients", tags=["Patient Registry"])
 
-# --- PYDANTIC SCHEMAS (Inline for Architectural Stability) ---
+# --- DATA TRANSFER OBJECTS (DTOs) ---
+
 class PatientCreate(BaseModel):
-    first_name: str
-    last_name: str
+    # Core Bio
+    surname: str
+    other_names: str
+    sex: str
     date_of_birth: str
-    phone: str
-    id_number: str
-    gender: str
-    insurance_type: str
+    
+    # Identification
+    id_type: str
+    id_number: Optional[str] = None
+    nationality: str
+    
+    # Contact
+    telephone_1: str
+    telephone_2: Optional[str] = None
+    email: Optional[str] = None
+    
+    # Location & Meta
+    postal_address: Optional[str] = None
+    postal_code: Optional[str] = None
+    residence: str
+    town: str
+    occupation: str
+    reference_number: Optional[str] = None
+    
+    # Next of Kin
+    nok_name: str
+    nok_relationship: str
+    nok_contact: str
+    notes: Optional[str] = None
 
-class PatientUpdate(BaseModel):
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    phone: Optional[str] = None
-    insurance_type: Optional[str] = None
+class PatientResponse(PatientCreate):
+    patient_id: int
+    outpatient_no: str
+    is_active: bool
+    registered_on: datetime
+
+    class Config:
+        from_attributes = True
+
+# --- HELPER: AUTO-GENERATE OP NUMBER ---
+def generate_outpatient_no(db: Session) -> str:
+    """Generates a sequential OP number: OP-YYYY-XXXX"""
+    current_year = datetime.now().year
+    prefix = f"OP-{current_year}-"
+    
+    # Get the last patient registered this year
+    last_patient = db.query(Patient).filter(Patient.outpatient_no.like(f"{prefix}%"))\
+                     .order_by(desc(Patient.patient_id)).first()
+    
+    if last_patient and last_patient.outpatient_no:
+        try:
+            last_sequence = int(last_patient.outpatient_no.split("-")[-1])
+            new_sequence = last_sequence + 1
+        except ValueError:
+            new_sequence = 1
+    else:
+        new_sequence = 1
+        
+    return f"{prefix}{new_sequence:04d}" # e.g., OP-2026-0001
 
 # --- ENDPOINTS ---
 
-@router.post("/", status_code=status.HTTP_201_CREATED)
-def create_patient(patient: PatientCreate, db: Session = Depends(get_db)):
-    """Registers a new patient with National ID uniqueness validation."""
+@router.post("/", response_model=PatientResponse, status_code=status.HTTP_201_CREATED)
+def register_patient(patient: PatientCreate, db: Session = Depends(get_db)):
+    """User Story 1.1: Register a new patient with duplicate detection."""
     
-    # 1. Prevent 500 Server Crashes by intercepting duplicates gracefully
-    existing_patient = db.query(Patient).filter(Patient.id_number == patient.id_number).first()
+    # Duplicate Detection Check (Epic 1 Requirement)
+    existing_patient = db.query(Patient).filter(
+        or_(
+            Patient.telephone_1 == patient.telephone_1,
+            (Patient.id_number == patient.id_number) & (Patient.id_number != None)
+        )
+    ).first()
+    
     if existing_patient:
-        raise HTTPException(status_code=400, detail="A patient with this National ID is already registered.")
-    
-    # 2. Safe Injection
+        raise HTTPException(status_code=400, detail="Patient with this Telephone or ID Number already exists.")
+
+    # Generate OP Number and map data
     db_patient = Patient(**patient.model_dump())
+    db_patient.outpatient_no = generate_outpatient_no(db)
+    
     db.add(db_patient)
     db.commit()
     db.refresh(db_patient)
     return db_patient
 
-@router.get("/")
-def read_patients(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    """Retrieves the master index, latest registrations first."""
-    return db.query(Patient).order_by(Patient.patient_id.desc()).offset(skip).limit(limit).all()
+@router.get("/", response_model=List[PatientResponse])
+def get_all_patients(search: Optional[str] = None, include_inactive: bool = False, db: Session = Depends(get_db)):
+    """User Story 1.2: Search and list patients."""
+    query = db.query(Patient)
+    
+    if not include_inactive:
+        query = query.filter(Patient.is_active == True)
+        
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            or_(
+                Patient.surname.ilike(search_term),
+                Patient.other_names.ilike(search_term),
+                Patient.telephone_1.ilike(search_term),
+                Patient.outpatient_no.ilike(search_term)
+            )
+        )
+        
+    return query.order_by(desc(Patient.registered_on)).limit(100).all()
 
-@router.get("/{patient_id}")
-def read_patient(patient_id: int, db: Session = Depends(get_db)):
+@router.put("/{patient_id}/deactivate", status_code=status.HTTP_200_OK)
+def deactivate_patient(patient_id: int, db: Session = Depends(get_db)):
+    """Action: Soft delete a patient."""
     patient = db.query(Patient).filter(Patient.patient_id == patient_id).first()
     if not patient:
-        raise HTTPException(status_code=404, detail="Patient record not found")
-    return patient
-
-@router.put("/{patient_id}")
-def update_patient(patient_id: int, updated_data: PatientUpdate, db: Session = Depends(get_db)):
-    db_patient = db.query(Patient).filter(Patient.patient_id == patient_id).first()
-    if not db_patient:
-        raise HTTPException(status_code=404, detail="Patient record not found")
-    
-    # exclude_unset=True ensures we only update fields the user actually provided
-    update_dict = updated_data.model_dump(exclude_unset=True)
-    for key, value in update_dict.items():
-        setattr(db_patient, key, value)
-    
+        raise HTTPException(status_code=404, detail="Patient not found")
+        
+    patient.is_active = False
     db.commit()
-    db.refresh(db_patient)
-    return db_patient
+    return {"status": "success", "message": f"Patient {patient.outpatient_no} deactivated."}
 
 @router.delete("/{patient_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_patient(patient_id: int, db: Session = Depends(get_db)):
-    db_patient = db.query(Patient).filter(Patient.patient_id == patient_id).first()
-    if not db_patient:
-        raise HTTPException(status_code=404, detail="Patient record not found")
-    
-    db.delete(db_patient)
+    """Action: Hard delete a patient (Admin only)."""
+    patient = db.query(Patient).filter(Patient.patient_id == patient_id).first()
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+        
+    db.delete(patient)
     db.commit()
-    return {"message": "Patient successfully removed from registry"}
+    return None

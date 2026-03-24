@@ -1,24 +1,23 @@
-from sqlalchemy import Column, Integer, ForeignKey, Text, DateTime, String
+from sqlalchemy import Column, Integer, String, Float, Text, ForeignKey, DateTime
 from sqlalchemy.sql import func
-from sqlalchemy.orm import relationship
 from app.config.database import Base
 
 class MedicalRecord(Base):
     __tablename__ = "medical_records"
-    __table_args__ = {'extend_existing': True}
 
     record_id = Column(Integer, primary_key=True, index=True)
-    patient_id = Column(Integer, ForeignKey("patients.patient_id"), nullable=False)
-    doctor_id = Column(Integer, ForeignKey("doctors.doctor_id"), nullable=False)
-    appointment_id = Column(Integer, ForeignKey("appointments.appointment_id"), nullable=True)
+    patient_id = Column(Integer, ForeignKey("patients.patient_id"))
     
-    diagnosis = Column(Text, nullable=False)
-    treatment_plan = Column(Text)
-    prescriptions = Column(Text) # Will evolve into a separate table for Pharmacy integration
-    vitals_bp = Column(String(20)) # Blood Pressure
-    vitals_temp = Column(String(10)) # Temperature
+    # Vitals Block
+    systolic_bp = Column(Integer, nullable=True)
+    diastolic_bp = Column(Integer, nullable=True)
+    temperature = Column(Float, nullable=True)
+    weight_kg = Column(Float, nullable=True)
+    
+    # Clinical Block
+    chief_complaint = Column(Text, nullable=False)
+    diagnosis = Column(Text, nullable=True)
+    treatment_plan = Column(Text, nullable=True)
+    prescription_notes = Column(Text, nullable=True)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    patient = relationship("Patient")
-    doctor = relationship("Doctor")

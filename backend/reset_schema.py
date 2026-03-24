@@ -8,7 +8,13 @@ from app.models.appointment import Appointment
 from app.models.bed import Bed
 from app.models.laboratory import LabTest
 from app.models.billing import Billing, InvoiceItem
-from app.models.medical_record import MedicalRecord  # <-- The missing link
+from app.models.medical_record import MedicalRecord  
+from app.models.queue import PatientQueue
+from app.models.idempotency import IdempotencyKey
+
+# --- NEW INVENTORY & PHARMACY MODELS ---
+from app.models.inventory import Location, InventoryItem, StockBatch
+from app.models.pharmacy import DispenseLog
 
 def reset_database_schema():
     print("Initiating forceful schema teardown...")
@@ -20,7 +26,7 @@ def reset_database_schema():
     
     print("Rebuilding schema with updated entity attributes...")
     
-    # 2. Rebuild the tables with the new Real-World fields (eTIMS, Vitals, etc.)
+    # 2. Rebuild the tables with the new Real-World fields (eTIMS, Vitals, Inventory, etc.)
     Base.metadata.create_all(bind=engine)
     
     print("✅ Database schema successfully synchronized.")
