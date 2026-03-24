@@ -1,65 +1,96 @@
-import random
 from sqlalchemy.orm import Session
-from app.config.database import SessionLocal
-from app.models.pharmacy import Drug
+from app.config.database import SessionLocal, engine, Base
+
+# --- CRITICAL: Import these so SQLAlchemy can resolve relationships ---
+from app.models.user import User
+from app.models.patient import Patient
+from app.models.medical_record import MedicalRecord
+from app.models.pharmacy import DrugInventory, DispenseLog 
+# ----------------------------------------------------------------------
 
 def seed_pharmacy():
+    print("💊 Initializing Pharmacy Inventory for Medicare ERP...")
+    
+    # This ensures all tables (including patients/users) exist before seeding
+    Base.metadata.create_all(bind=engine)
+    
     db = SessionLocal()
-    print("📦 Initializing Pharmacy Logistics...")
 
-    # Check if inventory already exists to prevent duplicate SKUs
-    if db.query(Drug).count() > 0:
-        print("⚠️ Pharmacy is already stocked. Clearing old inventory...")
-        db.query(Drug).delete()
+    print("🧹 Clearing old inventory data...")
+    try:
+        # Clearing DrugInventory first. 
+        # Note: If you have existing logs, you might need to clear DispenseLog too
+        db.query(DispenseLog).delete()
+        db.query(DrugInventory).delete()
         db.commit()
+    except Exception as e:
+        print(f"ℹ️ Cleanup info: {e}")
+        db.rollback()
 
-    medications = [
-        {"name": "Amoxicillin 500mg", "cat": "Antibiotic", "price": 12.50},
-        {"name": "Ibuprofen 400mg", "cat": "Pain Relief", "price": 5.99},
-        {"name": "Lisinopril 10mg", "cat": "Cardiovascular", "price": 15.00},
-        {"name": "Metformin 850mg", "cat": "Antidiabetic", "price": 8.45},
-        {"name": "Atorvastatin 20mg", "cat": "Cholesterol", "price": 22.10},
-        {"name": "Azithromycin 250mg", "cat": "Antibiotic", "price": 18.75},
-        {"name": "Amlodipine 5mg", "cat": "Cardiovascular", "price": 11.20},
-        {"name": "Albuterol Inhaler", "cat": "Respiratory", "price": 45.00},
-        {"name": "Omeprazole 20mg", "cat": "Gastrointestinal", "price": 14.30},
-        {"name": "Losartan 50mg", "cat": "Cardiovascular", "price": 16.80},
-        {"name": "Gabapentin 300mg", "cat": "Neurological", "price": 24.50},
-        {"name": "Hydrochlorothiazide", "cat": "Diuretic", "price": 6.75},
-        {"name": "Sertraline 50mg", "cat": "Antidepressant", "price": 19.99},
-        {"name": "Simvastatin 40mg", "cat": "Cholesterol", "price": 13.50},
-        {"name": "Montelukast 10mg", "cat": "Respiratory", "price": 28.00},
-        {"name": "Acetaminophen 500mg", "cat": "Pain Relief", "price": 4.50},
-        {"name": "Pantoprazole 40mg", "cat": "Gastrointestinal", "price": 17.25},
-        {"name": "Escitalopram 10mg", "cat": "Antidepressant", "price": 21.00},
-        {"name": "Fluconazole 150mg", "cat": "Antifungal", "price": 9.80},
-        {"name": "Cephalexin 500mg", "cat": "Antibiotic", "price": 15.60},
+    drugs = [
+        {
+            "brand_name": "Amoxyl 500mg",
+            "generic_name": "Amoxicillin",
+            "category": "Antibiotic",
+            "unit_price": 15.0,
+            "stock_quantity": 500,
+            "requires_prescription": True
+        },
+        {
+            "brand_name": "Augmentin 625mg",
+            "generic_name": "Amoxicillin + Clavulanic Acid",
+            "category": "Antibiotic",
+            "unit_price": 120.0,
+            "stock_quantity": 100,
+            "requires_prescription": True
+        },
+        {
+            "brand_name": "Panadol 500mg",
+            "generic_name": "Paracetamol",
+            "category": "Analgesic",
+            "unit_price": 5.0,
+            "stock_quantity": 1000,
+            "requires_prescription": False
+        },
+        {
+            "brand_name": "Mara-Moja",
+            "generic_name": "Paracetamol + Aspirin + Caffeine",
+            "category": "Analgesic",
+            "unit_price": 10.0,
+            "stock_quantity": 800,
+            "requires_prescription": False
+        },
+        {
+            "brand_name": "Coartem 80/480",
+            "generic_name": "Artemether + Lumefantrine",
+            "category": "Antimalarial",
+            "unit_price": 600.0,
+            "stock_quantity": 50,
+            "requires_prescription": True
+        },
+        {
+            "brand_name": "Glucophage 500mg",
+            "generic_name": "Metformin",
+            "category": "Antidiabetic",
+            "unit_price": 25.0,
+            "stock_quantity": 300,
+            "requires_prescription": True
+        }
     ]
 
-    for i, med in enumerate(medications):
-        # Generate random stock to trigger UI alerts
-        # 10% chance of being out of stock, 20% low stock, 70% well stocked
-        rand_val = random.random()
-        if rand_val < 0.10:
-            stock = 0
-        elif rand_val < 0.30:
-            stock = random.randint(1, 15)
-        else:
-            stock = random.randint(40, 200)
-
-        drug = Drug(
-            name=med["name"],
-            sku=f"MED-{str(i+1).zfill(4)}",
-            category=med["cat"],
-            stock_quantity=stock,
-            reorder_level=20,
-            unit_price=med["price"]
-        )
+    print("📦 Stocking shelves with essential medications...")
+    for drug_data in drugs:
+        drug = DrugInventory(**drug_data)
         db.add(drug)
 
-    db.commit()
-    db.close()
-    print("✅ Pharmacy stocked with 20 essential medications.")
+    try:
+        db.commit()
+        print("✅ Pharmacy inventory successfully seeded!")
+    except Exception as e:
+        print(f"❌ Error seeding pharmacy: {e}")
+        db.rollback()
+    finally:
+        db.close()
 
 if __name__ == "__main__":
     seed_pharmacy()

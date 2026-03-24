@@ -1,114 +1,113 @@
+import traceback
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy import desc
 from typing import List, Optional
 from pydantic import BaseModel
-from datetime import datetime, timezone
+from datetime import datetime, timedelta
+
 from app.config.database import get_db
-
-from app.models.inventory import StockBatch, InventoryItem, Location
-from app.models.pharmacy import DispenseLog
+from app.models.pharmacy import DrugInventory, DispenseLog
+from app.models.medical_record import MedicalRecord
 from app.models.patient import Patient
+from app.models.user import User
+from app.core.security import get_current_user
 
-router = APIRouter(prefix="/api/pharmacy", tags=["Pharmacy & OTC"])
+router = APIRouter(prefix="/api/pharmacy", tags=["Pharmacy POS"])
 
-# --- DATA TRANSFER OBJECTS (DTOs) ---
-class DispenseItemReq(BaseModel):
-    item_id: int
+# --- DTOs (Data Transfer Objects) ---
+class CartItem(BaseModel):
+    drug_id: int
     quantity: int
 
-class PrescriptionRequest(BaseModel):
-    patient_id: int
+class DispenseRequest(BaseModel):
+    patient_id: Optional[int] = None
     record_id: Optional[int] = None
-    pharmacist_id: int = 1 
-    payment_method: str = "Cash" # 'Cash' or 'M-PESA'
-    phone_number: Optional[str] = None
-    items: List[DispenseItemReq]
-
-class WalkInSaleRequest(BaseModel):
-    pharmacist_id: int = 1
-    payment_method: str = "Cash"
-    phone_number: Optional[str] = None
-    items: List[DispenseItemReq]
-
-# --- CORE ALGORITHM: FEFO DEDUCTION ---
-def execute_fefo_dispensing(db: Session, item_id: int, required_qty: int, location_name: str, user_id: int, patient_id: Optional[int] = None, record_id: Optional[int] = None):
-    item = db.query(InventoryItem).filter(InventoryItem.item_id == item_id).first()
-    if not item:
-        raise HTTPException(status_code=404, detail=f"InventoryItem ID {item_id} unrecognized.")
-
-    location = db.query(Location).filter(Location.name == location_name).first()
-    if not location:
-        raise HTTPException(status_code=404, detail=f"Location '{location_name}' unrecognized.")
-
-    batches = db.query(StockBatch).filter(
-        StockBatch.item_id == item_id,
-        StockBatch.location_id == location.location_id,
-        StockBatch.quantity > 0,
-        StockBatch.expiry_date > datetime.now(timezone.utc)
-    ).order_by(StockBatch.expiry_date.asc()).all()
-
-    total_available = sum(b.quantity for b in batches)
-    if total_available < required_qty:
-        raise HTTPException(status_code=400, detail=f"Deficit detected for {item.name}. Required: {required_qty}, Available: {total_available}")
-
-    remaining_qty = required_qty
-    logs = []
-
-    for batch in batches:
-        if remaining_qty <= 0: break
-        deduct_amount = min(batch.quantity, remaining_qty)
-        batch.quantity -= deduct_amount
-        remaining_qty -= deduct_amount
-
-        log = DispenseLog(
-            batch_id=batch.batch_id, patient_id=patient_id, record_id=record_id,
-            quantity_dispensed=deduct_amount, total_cost=deduct_amount * item.unit_price, dispensed_by=user_id
-        )
-        db.add(log)
-        logs.append(log)
-
-    return logs
+    payment_method: str
+    cart: List[CartItem]
 
 # --- ENDPOINTS ---
-@router.post("/dispense/prescription", status_code=status.HTTP_201_CREATED)
-def dispense_prescription(payload: PrescriptionRequest, db: Session = Depends(get_db)):
-    if payload.payment_method == "M-PESA" and not payload.phone_number:
-        raise HTTPException(status_code=400, detail="M-PESA STK Push requires a valid phone number.")
+@router.get("/inventory")
+def get_inventory(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    """Fetches all available drugs for the POS lookup."""
+    return db.query(DrugInventory).filter(DrugInventory.stock_quantity > 0).order_by(DrugInventory.brand_name).all()
 
-    generated_logs = []
+@router.get("/pending-prescriptions")
+def get_pending_prescriptions(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    """Fetches patients from the last 24 hours who have a prescription note."""
+    twenty_four_hours_ago = datetime.now() - timedelta(days=1)
+    
+    results = db.query(MedicalRecord, Patient).join(
+        Patient, MedicalRecord.patient_id == Patient.patient_id
+    ).filter(
+        MedicalRecord.prescription_notes != None,
+        MedicalRecord.prescription_notes != "",
+        MedicalRecord.created_at >= twenty_four_hours_ago
+    ).order_by(desc(MedicalRecord.created_at)).all()
+
+    return [
+        {
+            "record_id": record.record_id,
+            "patient_id": patient.patient_id,
+            "patient_name": f"{patient.first_name} {patient.last_name}",
+            "outpatient_no": patient.outpatient_no,
+            "prescription_notes": record.prescription_notes,
+            "time_prescribed": record.created_at
+        } for record, patient in results
+    ]
+
+@router.post("/dispense")
+def dispense_drugs(request: DispenseRequest, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    """Executes the POS transaction safely and exposes detailed errors."""
     try:
-        # Note: Safaricom Daraja API STK Push logic would be invoked here synchronously.
-        for request_item in payload.items:
-            logs = execute_fefo_dispensing(db, request_item.item_id, request_item.quantity, "Pharmacy", payload.pharmacist_id, payload.patient_id, payload.record_id)
-            generated_logs.extend(logs)
-            
-        db.commit()
-        return {"status": "success", "dispensed_batches": len(generated_logs), "payment_method": payload.payment_method}
-    except Exception as e:
-        db.rollback() 
-        raise e
+        total_billed = 0.0
+        
+        # Get the actual user ID of the staff member operating the POS from the JWT
+        user = db.query(User).filter(User.email == current_user.get("sub")).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid user session")
 
-@router.post("/dispense/walk-in", status_code=status.HTTP_201_CREATED)
-def process_walk_in_sale(payload: WalkInSaleRequest, db: Session = Depends(get_db)):
-    if payload.payment_method == "M-PESA" and not payload.phone_number:
-        raise HTTPException(status_code=400, detail="M-PESA STK Push requires a valid phone number.")
+        # CRITICAL FIX: Safely extract the primary key (whether it is named 'user_id' or just 'id')
+        staff_id = getattr(user, 'user_id', getattr(user, 'id', None))
+        if not staff_id:
+            raise ValueError("Could not extract primary key from User model.")
 
-    generated_logs = []
-    try:
-        for request_item in payload.items:
-            logs = execute_fefo_dispensing(db, request_item.item_id, request_item.quantity, "Pharmacy", payload.pharmacist_id, None, None)
-            generated_logs.extend(logs)
-            
+        for item in request.cart:
+            drug = db.query(DrugInventory).filter(DrugInventory.drug_id == item.drug_id).first()
+            if not drug:
+                raise HTTPException(status_code=404, detail=f"Drug ID {item.drug_id} not found.")
+            if drug.stock_quantity < item.quantity:
+                raise HTTPException(status_code=400, detail=f"Insufficient stock for {drug.brand_name}.")
+
+            # 1. Deduct Stock
+            drug.stock_quantity -= item.quantity
+            line_total = drug.unit_price * item.quantity
+            total_billed += line_total
+
+            # 2. Log the transaction to dispense_logs
+            new_log = DispenseLog(
+                drug_id=item.drug_id,
+                patient_id=request.patient_id,
+                record_id=request.record_id,
+                quantity_dispensed=item.quantity,
+                total_cost=line_total,
+                dispensed_by=staff_id, # Uses safely extracted staff ID
+                notes=f"Payment via {request.payment_method}"
+            )
+            db.add(new_log)
+
+        # 3. Commit Transaction
         db.commit()
-        return {"status": "success", "dispensed_batches": len(generated_logs), "payment_method": payload.payment_method}
+        return {"status": "success", "message": "Dispensed successfully", "total_billed": total_billed}
+
+    except HTTPException:
+        # Re-raise known 400/401/404 errors so they reach the frontend normally
+        raise 
     except Exception as e:
+        # 4. Expose the EXACT Python error, rollback DB, and log to terminal
         db.rollback()
-        raise e
-
-@router.get("/catalog")
-def get_inventory_catalog(db: Session = Depends(get_db)):
-    return db.query(InventoryItem).filter(InventoryItem.is_active == True).all()
-
-@router.get("/patients")
-def get_patients(db: Session = Depends(get_db)):
-    return db.query(Patient).all()
+        error_trace = traceback.format_exc()
+        print("\n--- 🛑 TRANSACTION FAILED ---")
+        print(error_trace)
+        print("------------------------------\n")
+        raise HTTPException(status_code=500, detail=f"Server Error: {str(e)}")

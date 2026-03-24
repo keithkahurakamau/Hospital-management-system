@@ -10,7 +10,8 @@ from app.models.user import User
 from app.models.patient import Patient
 from app.models.queue import PatientQueue
 from app.models.medical_record import MedicalRecord
-# Import other models if you have them (e.g., from app.models.billing import Billing)
+# FIXED: Added Pharmacy models to resolve the ImportError
+from app.models.pharmacy import DrugInventory, DispenseLog 
 
 # --- ROUTER IMPORTS ---
 from app.routes.patients import router as patients_router
@@ -62,7 +63,6 @@ app.add_middleware(
 )
 
 # --- ROUTER REGISTRATION ---
-# Auth is registered first to handle security early in the request chain
 app.include_router(auth_router)
 app.include_router(patients_router)
 app.include_router(doctors_router)
