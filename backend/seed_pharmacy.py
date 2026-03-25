@@ -1,31 +1,16 @@
 from sqlalchemy.orm import Session
-from app.config.database import SessionLocal, engine, Base
+from app.config.database import SessionLocal
 
-# --- CRITICAL: Import these so SQLAlchemy can resolve relationships ---
+# --- CRITICAL: Import ALL models to register relationships ---
 from app.models.user import User
 from app.models.patient import Patient
 from app.models.medical_record import MedicalRecord
 from app.models.pharmacy import DrugInventory, DispenseLog 
-# ----------------------------------------------------------------------
+# -------------------------------------------------------------
 
 def seed_pharmacy():
-    print("💊 Initializing Pharmacy Inventory for Medicare ERP...")
-    
-    # This ensures all tables (including patients/users) exist before seeding
-    Base.metadata.create_all(bind=engine)
-    
+    print("💊 Seeding Pharmacy Inventory...")
     db = SessionLocal()
-
-    print("🧹 Clearing old inventory data...")
-    try:
-        # Clearing DrugInventory first. 
-        # Note: If you have existing logs, you might need to clear DispenseLog too
-        db.query(DispenseLog).delete()
-        db.query(DrugInventory).delete()
-        db.commit()
-    except Exception as e:
-        print(f"ℹ️ Cleanup info: {e}")
-        db.rollback()
 
     drugs = [
         {
@@ -80,15 +65,14 @@ def seed_pharmacy():
 
     print("📦 Stocking shelves with essential medications...")
     for drug_data in drugs:
-        drug = DrugInventory(**drug_data)
-        db.add(drug)
+        db.add(DrugInventory(**drug_data))
 
     try:
         db.commit()
         print("✅ Pharmacy inventory successfully seeded!")
     except Exception as e:
-        print(f"❌ Error seeding pharmacy: {e}")
         db.rollback()
+        print(f"❌ Error seeding pharmacy: {e}")
     finally:
         db.close()
 

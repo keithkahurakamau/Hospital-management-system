@@ -1,66 +1,71 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func
-from typing import List
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from sqlalchemy import func, desc
+from datetime import datetime, date, timedelta
+
 from app.config.database import get_db
-from app.models.billing import Billing
+from app.models.pharmacy import DispenseLog, DrugInventory
 from app.models.patient import Patient
-from pydantic import BaseModel
-from datetime import datetime
+from app.models.user import User
+from app.core.security import get_current_user
 
-router = APIRouter(prefix="/api/billing", tags=["Billing"])
+router = APIRouter(prefix="/api/billing", tags=["Billing & Financials"])
 
-# Pydantic Schema for incoming billing data
-class BillCreate(BaseModel):
-    patient_id: int
-    appointment_id: int = None
-    total_amount: float
-    description: str = "Standard Consultation"
+@router.get("/overview")
+def get_billing_overview(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    """Calculates high-level financial KPIs using SQL aggregation functions for optimal performance."""
+    today = date.today()
+    first_day_of_month = today.replace(day=1)
 
-@router.post("/", status_code=status.HTTP_201_CREATED)
-def generate_invoice(bill: BillCreate, db: Session = Depends(get_db)):
-    # Verify patient exists to prevent orphan bills
-    patient = db.query(Patient).filter(Patient.patient_id == bill.patient_id).first()
-    if not patient:
-        raise HTTPException(status_code=404, detail="Patient not found")
+    # 1. Today's Revenue
+    today_rev = db.query(func.sum(DispenseLog.total_cost)).filter(
+        func.date(DispenseLog.dispensed_at) == today
+    ).scalar() or 0.0
 
-    new_bill = Billing(
-        patient_id=bill.patient_id,
-        appointment_id=bill.appointment_id,
-        total_amount=bill.total_amount,
-        status="Pending", # Default status
-        billing_date=datetime.utcnow()
-    )
-    db.add(new_bill)
-    db.commit()
-    db.refresh(new_bill)
-    return new_bill
+    # 2. Monthly Revenue
+    monthly_rev = db.query(func.sum(DispenseLog.total_cost)).filter(
+        func.date(DispenseLog.dispensed_at) >= first_day_of_month
+    ).scalar() or 0.0
 
-@router.get("/")
-def get_all_invoices(db: Session = Depends(get_db)):
-    # Eager load the patient data so the frontend can display names
-    bills = db.query(Billing).options(joinedload(Billing.patient)).order_by(Billing.invoice_id.desc()).all()
-    
+    # 3. Transaction Volume
+    tx_count = db.query(func.count(DispenseLog.dispense_id)).filter(
+        func.date(DispenseLog.dispensed_at) == today
+    ).scalar() or 0
+
+    # 4. Average Order Value (AOV)
+    aov = (today_rev / tx_count) if tx_count > 0 else 0.0
+
+    return {
+        "today_revenue": today_rev,
+        "monthly_revenue": monthly_rev,
+        "transactions_today": tx_count,
+        "average_order_value": aov
+    }
+
+@router.get("/transactions")
+def get_recent_transactions(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    """
+    Fetches the detailed ledger. 
+    Uses an outer join for Patients, as Walk-in clients will have a NULL patient_id.
+    """
+    logs = db.query(DispenseLog, DrugInventory, User, Patient).join(
+        DrugInventory, DispenseLog.drug_id == DrugInventory.drug_id
+    ).join(
+        User, DispenseLog.dispensed_by == User.user_id
+    ).outerjoin(
+        Patient, DispenseLog.patient_id == Patient.patient_id
+    ).order_by(desc(DispenseLog.dispensed_at)).limit(50).all()
+
     return [
         {
-            "invoice_id": b.invoice_id,
-            "patient_name": f"{b.patient.first_name} {b.patient.last_name}",
-            "amount": float(b.total_amount),
-            "status": b.status,
-            "date": b.billing_date.strftime("%b %d, %Y")
-        } for b in bills
+            "transaction_id": f"MC-{log.DispenseLog.dispense_id:06d}",
+            "date": log.DispenseLog.dispensed_at,
+            "drug_name": log.DrugInventory.brand_name,
+            "quantity": log.DispenseLog.quantity_dispensed,
+            "total_cost": log.DispenseLog.total_cost,
+            "method": log.DispenseLog.notes.replace("Payment via ", "") if log.DispenseLog.notes else "Cash",
+            "cashier": log.User.full_name,
+            "patient": f"{log.Patient.first_name} {log.Patient.last_name}" if log.Patient else "Walk-in Client"
+        }
+        for log in logs
     ]
-
-@router.patch("/{invoice_id}/status")
-def update_payment_status(invoice_id: int, new_status: str, db: Session = Depends(get_db)):
-    valid_statuses = ["Pending", "Paid", "Insurance Claimed", "Overdue"]
-    if new_status not in valid_statuses:
-        raise HTTPException(status_code=400, detail="Invalid status")
-
-    bill = db.query(Billing).filter(Billing.invoice_id == invoice_id).first()
-    if not bill:
-        raise HTTPException(status_code=404, detail="Invoice not found")
-    
-    bill.status = new_status
-    db.commit()
-    return {"message": f"Invoice {invoice_id} marked as {new_status}"}

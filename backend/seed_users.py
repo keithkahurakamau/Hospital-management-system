@@ -1,56 +1,43 @@
+import os
+import sys
 from sqlalchemy.orm import Session
 from app.config.database import SessionLocal, engine, Base
-# IMPORTANT: We must import the User model so SQLAlchemy knows it exists
-from app.models.user import User 
-from passlib.context import CryptContext
+from app.models.user import User
+from app.core.security import get_password_hash
 
-# Security configuration
-pwd_context = CryptContext(schemes=["bcrypt"], bcrypt__ident="2b", deprecated="auto")
+# Ensure tables exist
+Base.metadata.create_all(bind=engine)
 
-def seed_users():
-    print("🚀 Initializing Database for Medicare ERP...")
-    
-    # This line is the magic fix: It creates the tables if they don't exist
-    Base.metadata.create_all(bind=engine)
-    
+def seed_test_users():
     db = SessionLocal()
-
-    print("🧹 Clearing existing users to apply branding corrections...")
-    try:
-        # We use a direct execute to handle cases where the table might be empty
-        db.query(User).delete()
-        db.commit()
-    except Exception as e:
-        print(f"ℹ️ Note: Clean slate skip (Table was likely empty): {e}")
-        db.rollback()
-
-    print("🔐 Hashing passwords and seeding accounts...")
     
-    doctor = User(
-        email="doctor@medicare.io",
-        full_name="Dr. Keith Kamau",
-        hashed_password=pwd_context.hash("admin123"),
-        role="DOCTOR",
-        is_active=True
-    )
+    # 1. Clear out old users to avoid duplicates
+    db.query(User).delete()
+    
+    # 2. Define our test squad
+    test_users = [
+        {"email": "admin@medicare.io", "full_name": "System Administrator", "role": "ADMIN", "password": "password"},
+        {"email": "doctor@medicare.io", "full_name": "Dr. Sarah Smith", "role": "DOCTOR", "password": "password"},
+        {"email": "desk@medicare.io", "full_name": "John Frontdesk", "role": "RECEPTIONIST", "password": "password"},
+        {"email": "lab@medicare.io", "full_name": "Mike LabTech", "role": "LAB_TECH", "password": "password"},
+        {"email": "pharmacy@medicare.io", "full_name": "Emma Pharmacist", "role": "PHARMACIST", "password": "password"},
+    ]
 
-    secretary = User(
-        email="desk@medicare.io",
-        full_name="Front Desk Secretary",
-        hashed_password=pwd_context.hash("desk123"),
-        role="SECRETARY",
-        is_active=True
-    )
-
-    try:
-        db.add_all([doctor, secretary])
-        db.commit()
-        print("✅ Users successfully synchronized to @medicare.io!")
-    except Exception as e:
-        print(f"❌ Error seeding users: {e}")
-        db.rollback()
-    finally:
-        db.close()
+    # 3. Hash passwords and add to DB
+    for u in test_users:
+        user = User(
+            email=u["email"],
+            full_name=u["full_name"],
+            role=u["role"],
+            hashed_password=get_password_hash(u["password"]),
+            is_active=True
+        )
+        db.add(user)
+    
+    db.commit()
+    db.close()
+    print("✅ Database successfully seeded with 5 test accounts!")
+    print("All passwords are set to: 'password'")
 
 if __name__ == "__main__":
-    seed_users()
+    seed_test_users()

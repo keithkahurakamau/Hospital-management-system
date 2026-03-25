@@ -1,121 +1,99 @@
 import React, { useState } from 'react';
-import { Activity, Lock, Mail, Eye, EyeOff, Loader2 } from 'lucide-react';
-import api from '../api/axiosConfig'; 
+import api from '../api/axiosConfig';
+import { LogIn, Lock, Mail, AlertCircle, Activity, Loader2 } from 'lucide-react';
 
 const Login = ({ onLoginSuccess }) => {
-    const [credentials, setCredentials] = useState({ email: '', password: '' });
-    const [showPassword, setShowPassword] = useState(false);
+    const [formData, setFormData] = useState({ email: '', password: '' });
+    const [error, setError] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState('');
-
-    const handleChange = (e) => {
-        setCredentials({ ...credentials, [e.target.name]: e.target.value });
-        setError(''); 
-    };
 
     const handleSubmit = async (e) => {
-        e.preventDefault();
+        e.preventDefault(); 
+        setError(null);
         setIsLoading(true);
-        setError('');
 
         try {
-            const response = await api.post('/auth/login', {
-                email: credentials.email,
-                password: credentials.password
-            });
-
-            // --- THE CRITICAL FIX ---
-            // Destructure both the token and the user object from the response
-            const { token, user: userData } = response.data;
-
-            // Save the JWT to localStorage. Axios interceptor uses the key 'token'.
-            localStorage.setItem('token', token); 
-            localStorage.setItem('userRole', userData.role);
-            localStorage.setItem('userName', userData.name);
+            const res = await api.post('/auth/login', formData);
             
+            const { access_token, role, full_name, user_id } = res.data;
+
+            // SAVING TO SESSION STORAGE (Tab-Isolated)
+            sessionStorage.setItem('token', access_token);
+            sessionStorage.setItem('userRole', role);
+            sessionStorage.setItem('userName', full_name);
+            sessionStorage.setItem('userId', user_id); 
+
             onLoginSuccess();
             
         } catch (err) {
-            const errorMessage = err.response?.data?.detail || 'Invalid credentials or system unreachable.';
-            setError(errorMessage);
+            console.error("Login Error:", err);
+            const message = err.response?.data?.detail || "System unreachable. Please check your connection.";
+            setError(message);
         } finally {
             setIsLoading(false);
         }
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center p-4">
-            <div className="w-full max-w-md bg-white rounded-3xl shadow-xl border border-slate-100 overflow-hidden">
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 font-sans">
+            <div className="w-full max-w-[420px] animate-in fade-in zoom-in duration-500">
                 
-                {/* Brand Header */}
-                <div className="bg-[#1B2559] p-8 text-center flex flex-col items-center">
-                    <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center mb-4 backdrop-blur-sm border border-white/20">
-                        <Activity size={32} className="text-white" />
+                <div className="flex flex-col items-center mb-10">
+                    <div className="w-16 h-16 bg-slate-800 rounded-[22px] flex items-center justify-center text-white shadow-2xl shadow-slate-200 mb-4 transition-transform hover:scale-110">
+                        <Activity size={32} />
                     </div>
-                    <h1 className="text-2xl font-bold text-white tracking-wide">Medicare ERP</h1>
-                    <p className="text-blue-200 text-sm mt-2 font-medium">Hospital Management System V3</p>
+                    <h1 className="text-3xl font-black text-slate-800 tracking-tight">Medicare ERP</h1>
+                    <p className="text-slate-400 font-bold text-xs uppercase tracking-[0.2em] mt-2">Clinical Management System</p>
                 </div>
 
-                <div className="p-8">
-                    <h2 className="text-xl font-bold text-[#1B2559] mb-6 text-center">Secure Login</h2>
+                <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-xl shadow-slate-200/50">
+                    <h2 className="text-xl font-black text-slate-800 mb-8">Secure Login</h2>
 
                     {error && (
-                        <div className="mb-6 p-3 bg-red-50 border border-red-100 text-red-600 text-sm font-bold rounded-xl text-center">
-                            {error}
+                        <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3 animate-in slide-in-from-top-2 duration-300">
+                            <AlertCircle className="text-red-500 shrink-0 mt-0.5" size={18} />
+                            <p className="text-xs font-bold text-red-700 leading-relaxed">{error}</p>
                         </div>
                     )}
 
                     <form onSubmit={handleSubmit} className="space-y-5">
-                        <div>
-                            <label className="block text-xs font-bold text-slate-700 mb-2 ml-1">Email Address</label>
-                            <div className="relative">
-                                <Mail className="absolute left-4 top-3.5 text-slate-400" size={18} />
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email Address</label>
+                            <div className="relative group">
+                                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-slate-800 transition-colors" size={18} />
                                 <input 
                                     type="email" 
-                                    name="email"
                                     required
-                                    value={credentials.email}
-                                    onChange={handleChange}
-                                    placeholder="Enter your email" 
-                                    className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+                                    placeholder="desk@medicare.io"
+                                    className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none text-sm font-medium focus:border-slate-800 focus:bg-white transition-all"
+                                    value={formData.email}
+                                    onChange={(e) => setFormData({...formData, email: e.target.value})}
                                 />
                             </div>
                         </div>
 
-                        <div>
-                            <label className="block text-xs font-bold text-slate-700 mb-2 ml-1">Password</label>
-                            <div className="relative">
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Password</label>
+                            <div className="relative group">
+                                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-slate-800 transition-colors" size={18} />
                                 <input 
-                                    type={showPassword ? "text" : "password"} 
-                                    name="password"
+                                    type="password" 
                                     required
-                                    value={credentials.password}
-                                    onChange={handleChange}
-                                    placeholder="Enter your password" 
-                                    className="w-full pl-11 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+                                    placeholder="••••••••"
+                                    className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none text-sm font-medium focus:border-slate-800 focus:bg-white transition-all"
+                                    value={formData.password}
+                                    onChange={(e) => setFormData({...formData, password: e.target.value})}
                                 />
-                                <button 
-                                    type="button"
-                                    onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute right-4 top-3.5 text-slate-400 hover:text-blue-600 transition-colors"
-                                >
-                                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                                </button>
                             </div>
                         </div>
 
                         <button 
                             type="submit" 
                             disabled={isLoading}
-                            className="w-full py-4 bg-blue-600 text-white font-bold rounded-xl shadow-md hover:bg-blue-700 hover:shadow-lg transition-all flex justify-center items-center gap-2 disabled:bg-blue-400 disabled:cursor-not-allowed"
+                            className="w-full bg-slate-800 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.15em] shadow-lg shadow-slate-200 hover:bg-slate-900 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:bg-slate-200"
                         >
-                            {isLoading ? (
-                                <>
-                                    <Loader2 size={18} className="animate-spin" /> Authenticating...
-                                </>
-                            ) : (
-                                'Access System'
-                            )}
+                            {isLoading ? <Loader2 className="animate-spin" size={18}/> : <LogIn size={18}/>}
+                            {isLoading ? 'Authenticating...' : 'Access System'}
                         </button>
                     </form>
                 </div>

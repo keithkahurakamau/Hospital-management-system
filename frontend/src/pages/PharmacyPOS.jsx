@@ -138,9 +138,9 @@ const PharmacyPOS = () => {
                         {paymentState === 'processing' && (
                             <div className="flex flex-col items-center py-6">
                                 <div className="relative flex items-center justify-center w-24 h-24 mb-6">
-                                    <div className="absolute inset-0 border-4 border-blue-100 rounded-full"></div>
-                                    <div className="absolute inset-0 border-4 border-blue-600 rounded-full border-t-transparent animate-spin"></div>
-                                    <Banknote className="text-blue-600" size={28} />
+                                    <div className="absolute inset-0 border-4 border-slate-100 rounded-full"></div>
+                                    <div className="absolute inset-0 border-4 border-slate-800 rounded-full border-t-transparent animate-spin"></div>
+                                    <Banknote className="text-slate-800" size={28} />
                                 </div>
                                 <h2 className="text-2xl font-black text-slate-800">Processing Payment</h2>
                                 <p className="text-slate-500 mt-2 text-sm max-w-[250px]">
@@ -217,7 +217,7 @@ const PharmacyPOS = () => {
                                     <button onClick={() => window.print()} className="flex-1 py-3.5 bg-slate-800 text-white font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-slate-700 transition-colors">
                                         <Printer size={18}/> Print
                                     </button>
-                                    <button onClick={resetTransaction} className="flex-1 py-3.5 bg-emerald-500 text-white font-bold rounded-xl hover:bg-emerald-600 transition-colors">
+                                    <button onClick={resetTransaction} className="flex-1 py-3.5 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-colors">
                                         New Sale
                                     </button>
                                 </div>
@@ -241,7 +241,7 @@ const PharmacyPOS = () => {
                             <input 
                                 type="text" 
                                 placeholder="Search inventory..." 
-                                className="w-full pl-11 pr-4 py-3 bg-slate-50/80 rounded-2xl outline-none border border-slate-200 text-sm focus:border-blue-500 focus:bg-white transition-all shadow-inner shadow-slate-50"
+                                className="w-full pl-11 pr-4 py-3 bg-slate-50/80 rounded-2xl outline-none border border-slate-200 text-sm focus:border-slate-400 focus:bg-white transition-all shadow-inner shadow-slate-50"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
@@ -268,15 +268,15 @@ const PharmacyPOS = () => {
                                     className={`relative p-5 bg-white border rounded-[24px] transition-all duration-300 flex flex-col justify-between h-[150px]
                                         ${isOutOfStock 
                                             ? 'border-slate-100 opacity-60 cursor-not-allowed' 
-                                            : 'border-slate-200 cursor-pointer hover:border-blue-300 hover:shadow-xl hover:shadow-blue-500/5 hover:-translate-y-1'}`}
+                                            : 'border-slate-200 cursor-pointer hover:border-slate-300 hover:shadow-md hover:-translate-y-1'}`}
                                 >
                                     <div>
                                         <div className="flex justify-between items-start mb-2">
-                                            <span className="text-[10px] font-black text-blue-600 bg-blue-50/80 px-2.5 py-1 rounded-md uppercase tracking-widest border border-blue-100/50">
+                                            <span className="text-[10px] font-black text-slate-600 bg-slate-100 px-2.5 py-1 rounded-md uppercase tracking-widest border border-slate-200">
                                                 {item.category}
                                             </span>
                                             {isLowStock && !isOutOfStock && (
-                                                <span className="flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-md">
+                                                <span className="flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-md border border-amber-100/50">
                                                     <AlertTriangle size={10} /> Low
                                                 </span>
                                             )}
@@ -308,11 +308,11 @@ const PharmacyPOS = () => {
                 <div className="px-6 pt-6 pb-4 bg-white z-10">
                     <div className="flex justify-between items-center mb-5">
                         <h2 className="font-black text-slate-800 flex items-center gap-2">
-                            <div className="p-2 bg-blue-50 text-blue-600 rounded-xl"><ShoppingBag size={18}/></div>
+                            <div className="p-2 bg-slate-100 text-slate-600 rounded-xl"><ShoppingBag size={18}/></div>
                             Current Order
                         </h2>
                         {cart.length > 0 && (
-                            <span className="bg-blue-600 text-white text-[10px] font-bold px-2.5 py-1 rounded-full">
+                            <span className="bg-slate-800 text-white text-[10px] font-bold px-2.5 py-1 rounded-full">
                                 {cart.length} Item{cart.length !== 1 && 's'}
                             </span>
                         )}
@@ -338,7 +338,7 @@ const PharmacyPOS = () => {
                     {saleType === 'Prescription' && (
                         <div className="mt-3 animate-in fade-in slide-in-from-top-2 duration-200">
                             <select 
-                                className="w-full p-3.5 bg-slate-50 rounded-xl outline-none border border-slate-200 text-xs font-bold text-slate-700 focus:border-blue-400 focus:bg-white transition-colors cursor-pointer"
+                                className="w-full p-3.5 bg-slate-50 rounded-xl outline-none border border-slate-200 text-xs font-bold text-slate-700 focus:border-slate-300 focus:bg-white transition-colors cursor-pointer"
                                 value={selectedPatientRecord}
                                 onChange={(e) => setSelectedPatientRecord(e.target.value)}
                             >
@@ -363,7 +363,7 @@ const PharmacyPOS = () => {
                         </div>
                     ) : (
                         cart.map(item => (
-                            <div key={item.drug_id} className="flex justify-between items-center p-3 bg-white border border-slate-200/60 rounded-2xl group hover:border-blue-200 transition-colors">
+                            <div key={item.drug_id} className="flex justify-between items-center p-3 bg-white border border-slate-200/60 rounded-2xl group hover:border-slate-300 transition-colors">
                                 <div className="flex-1 pr-3">
                                     <p className="font-bold text-xs text-slate-800 truncate w-[140px] leading-tight">{item.brand_name}</p>
                                     <p className="text-[10px] font-bold text-slate-400 mt-1">KES {item.unit_price}</p>
@@ -415,7 +415,7 @@ const PharmacyPOS = () => {
                     <button 
                         onClick={handleDispense}
                         disabled={cart.length === 0}
-                        className="w-full py-4 bg-blue-600 text-white font-black text-[13px] rounded-2xl shadow-xl shadow-blue-600/20 hover:bg-blue-700 hover:-translate-y-0.5 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none transition-all duration-200 flex items-center justify-center gap-2"
+                        className="w-full py-4 bg-slate-800 text-white font-black text-[13px] rounded-2xl shadow-lg hover:bg-slate-700 hover:-translate-y-0.5 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none transition-all duration-200 flex items-center justify-center gap-2"
                     >
                         {paymentMethod === 'M-PESA' ? 'Execute M-PESA Push' : 'Process Payment'} 
                         <span className="opacity-50 font-normal">→</span>

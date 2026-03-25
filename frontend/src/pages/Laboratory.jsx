@@ -1,169 +1,201 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api/axiosConfig';
-import { FlaskConical, Clock, CheckCircle2, TestTube2, User } from 'lucide-react';
+import { 
+    FileText, Clock, Activity, TestTube2, 
+    CheckCircle2, Stethoscope, AlertCircle, ChevronRight 
+} from 'lucide-react';
 
 const Laboratory = () => {
-    const [tests, setTests] = useState([]);
-    const [patients, setPatients] = useState([]);
-    const [loading, setLoading] = useState(true);
-    
-    // Form states
-    const [newTest, setNewTest] = useState({ patient_id: '', test_name: '' });
-    const [activeResultId, setActiveResultId] = useState(null);
-    const [resultText, setResultText] = useState('');
+    const [queue, setQueue] = useState([]);
+    const [activePatient, setActivePatient] = useState(null);
+    const [testResults, setTestResults] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const loadData = async () => {
+    useEffect(() => {
+        fetchQueue();
+        const interval = setInterval(fetchQueue, 5000); // 5s High-frequency polling
+        return () => clearInterval(interval);
+    }, []);
+
+    const fetchQueue = async () => {
         try {
-            const [labRes, patRes] = await Promise.all([
-                api.get('/lab/'),
-                api.get('/patients/')
-            ]);
-            setTests(labRes.data);
-            setPatients(patRes.data);
+            const res = await api.get('/queue/Laboratory');
+            setQueue(res.data);
+            
+            // Keep the active patient data in sync with the queue
+            if (activePatient) {
+                const updated = res.data.find(q => q.queue_id === activePatient.queue_id);
+                if (!updated) setActivePatient(null);
+            }
+        } catch (err) { 
+            console.error("Lab Queue fetch error", err); 
+        }
+    };
+
+    const callPatient = async (patient) => {
+        try {
+            await api.put(`/queue/${patient.queue_id}/status`, { status: 'Testing' });
+            setActivePatient({ ...patient, status: 'Testing' });
+            fetchQueue();
+        } catch (err) { 
+            alert("Failed to initialize sample testing."); 
+        }
+    };
+
+    const submitResults = async () => {
+        if (!activePatient || !testResults) return;
+        
+        setIsSubmitting(true);
+        try {
+            // 1. Hand back to Doctor with 'Urgent' status (Acuity 2)
+            await api.post('/queue', {
+                patient_id: activePatient.patient_id,
+                department: 'Consultation',
+                acuity_level: 2, 
+                notes: `LAB FINDINGS: ${testResults}`
+            });
+
+            // 2. Mark this Lab session as Completed
+            await api.put(`/queue/${activePatient.queue_id}/status`, { status: 'Completed' });
+            
+            alert(`Results submitted. ${activePatient.patient_name} routed back to Consultation.`);
+            setActivePatient(null);
+            setTestResults('');
+            fetchQueue();
         } catch (err) {
-            console.error("Failed to load lab data", err);
+            alert(`Submission error: ${err.response?.data?.detail || "System offline"}`);
         } finally {
-            setLoading(false);
+            setIsSubmitting(false);
         }
     };
 
-    useEffect(() => { loadData(); }, []);
-
-    const handleRequestTest = async (e) => {
-        e.preventDefault();
-        try {
-            await api.post('/lab/request', newTest);
-            setNewTest({ patient_id: '', test_name: '' });
-            loadData();
-        } catch (err) {
-            alert("Failed to request test");
-        }
+    const getAcuityStyle = (level) => {
+        if (level === 1) return "bg-red-50 text-red-600 border-red-100";
+        if (level === 2) return "bg-amber-50 text-amber-600 border-amber-100";
+        return "bg-emerald-50 text-emerald-600 border-emerald-100";
     };
-
-    const handleCompleteTest = async (testId) => {
-        if (!resultText) return alert("Please enter the result summary first.");
-        try {
-            await api.patch(`/lab/${testId}/complete`, { result_summary: resultText });
-            setActiveResultId(null);
-            setResultText('');
-            loadData();
-        } catch (err) {
-            alert("Failed to save results");
-        }
-    };
-
-    const pendingTests = tests.filter(t => t.status === 'Pending');
-    const completedTests = tests.filter(t => t.status === 'Completed');
-
-    if (loading) return <div className="text-[#A3AED0] p-8">Loading Laboratory Systems...</div>;
 
     return (
-        <div className="max-w-7xl mx-auto space-y-8">
-            <header className="flex justify-between items-end">
-                <div>
-                    <h2 className="text-2xl font-bold text-[#1B2559]">Laboratory & Diagnostics</h2>
-                    <p className="text-sm text-[#A3AED0] mt-1">Manage test requests and clinical results</p>
-                </div>
-            </header>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* 1. Request New Test Panel */}
-                <div className="lg:col-span-1">
-                    <form onSubmit={handleRequestTest} className="bg-white p-6 rounded-3xl border border-slate-50 shadow-sm space-y-5">
-                        <h3 className="font-bold flex items-center gap-2 text-[#1B2559]">
-                            <TestTube2 size={18} className="text-blue-500" /> Request Lab Test
-                        </h3>
-                        <select 
-                            required
-                            className="w-full p-3 bg-slate-50 rounded-xl outline-none border border-slate-100 text-sm font-medium"
-                            value={newTest.patient_id}
-                            onChange={e => setNewTest({...newTest, patient_id: e.target.value})}
-                        >
-                            <option value="">Select Patient...</option>
-                            {patients.map(p => (
-                                <option key={p.patient_id} value={p.patient_id}>{p.first_name} {p.last_name}</option>
-                            ))}
-                        </select>
-                        <select 
-                            required
-                            className="w-full p-3 bg-slate-50 rounded-xl outline-none border border-slate-100 text-sm font-medium"
-                            value={newTest.test_name}
-                            onChange={e => setNewTest({...newTest, test_name: e.target.value})}
-                        >
-                            <option value="">Select Test Type...</option>
-                            <option value="Complete Blood Count (CBC)">Complete Blood Count (CBC)</option>
-                            <option value="Basic Metabolic Panel (BMP)">Basic Metabolic Panel (BMP)</option>
-                            <option value="Lipid Panel">Lipid Panel</option>
-                            <option value="Urinalysis">Urinalysis</option>
-                            <option value="MRI Scan">MRI Scan</option>
-                        </select>
-                        <button type="submit" className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg hover:bg-blue-700 transition-colors">
-                            Submit Order
-                        </button>
-                    </form>
+        <div className="max-w-[1440px] mx-auto h-[85vh] flex gap-6 font-sans animate-in fade-in duration-500">
+            
+            {/* LEFT PANE: Lab Test Queue */}
+            <div className="w-[380px] bg-white rounded-[32px] border border-slate-200 shadow-sm flex flex-col overflow-hidden">
+                <div className="p-6 bg-slate-50/50 border-b border-slate-100 flex justify-between items-center">
+                    <h2 className="font-black text-slate-800 flex items-center gap-2 uppercase text-xs tracking-widest">
+                        <div className="p-2 bg-purple-50 text-purple-600 rounded-xl"><TestTube2 size={18}/></div>
+                        Sample Queue
+                    </h2>
+                    <span className="bg-slate-800 text-white text-[10px] font-bold px-2.5 py-1 rounded-full shadow-sm">
+                        {queue.length} Pending
+                    </span>
                 </div>
 
-                {/* 2. Lab Queue */}
-                <div className="lg:col-span-2 space-y-6">
-                    {/* Pending Queue */}
-                    <div className="bg-white rounded-3xl p-6 border border-slate-50 shadow-sm">
-                        <h3 className="text-lg font-bold text-[#1B2559] mb-4 flex items-center gap-2">
-                            <Clock size={20} className="text-orange-500"/> Pending Analysis ({pendingTests.length})
-                        </h3>
-                        <div className="space-y-4">
-                            {pendingTests.length === 0 ? <p className="text-sm text-[#A3AED0]">No pending tests in queue.</p> : null}
-                            {pendingTests.map(test => (
-                                <div key={test.test_id} className="p-4 border border-orange-100 bg-orange-50/30 rounded-2xl flex flex-col md:flex-row justify-between gap-4">
-                                    <div>
-                                        <p className="font-bold text-[#1B2559]">{test.test_name}</p>
-                                        <p className="text-xs font-medium text-slate-500 mt-1 flex items-center gap-1">
-                                            <User size={12}/> {test.patient_name} • Ordered by {test.doctor_name}
-                                        </p>
-                                    </div>
-                                    
-                                    {activeResultId === test.test_id ? (
-                                        <div className="flex-1 flex gap-2">
-                                            <input 
-                                                type="text" 
-                                                placeholder="Enter result findings..." 
-                                                className="flex-1 p-2 text-sm border border-slate-200 rounded-lg outline-none"
-                                                value={resultText}
-                                                onChange={e => setResultText(e.target.value)}
-                                                autoFocus
-                                            />
-                                            <button onClick={() => handleCompleteTest(test.test_id)} className="px-4 py-2 bg-emerald-500 text-white text-xs font-bold rounded-lg hover:bg-emerald-600">Save</button>
-                                            <button onClick={() => setActiveResultId(null)} className="px-3 py-2 bg-slate-200 text-slate-600 text-xs font-bold rounded-lg">Cancel</button>
-                                        </div>
-                                    ) : (
-                                        <button onClick={() => setActiveResultId(test.test_id)} className="self-start md:self-center px-4 py-2 bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-lg shadow-sm hover:bg-slate-50">
-                                            Input Results
-                                        </button>
-                                    )}
-                                </div>
-                            ))}
+                <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar bg-slate-50/30">
+                    {queue.length === 0 ? (
+                        <div className="h-full flex flex-col items-center justify-center opacity-20 text-slate-500">
+                            <FileText size={48} strokeWidth={1} className="mb-2" />
+                            <p className="text-[10px] font-black uppercase">No active requests</p>
                         </div>
-                    </div>
+                    ) : (
+                        queue.map(p => (
+                            <div 
+                                key={p.queue_id} 
+                                onClick={() => callPatient(p)}
+                                className={`p-4 rounded-[20px] border cursor-pointer transition-all duration-300 group
+                                    ${activePatient?.queue_id === p.queue_id 
+                                        ? 'bg-slate-800 border-slate-800 shadow-xl text-white' 
+                                        : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-md'}`}
+                            >
+                                <div className="flex justify-between items-start mb-2">
+                                    <span className={`text-[9px] font-black px-2 py-1 rounded-md uppercase tracking-widest border ${activePatient?.queue_id === p.queue_id ? 'bg-white/10 border-white/20 text-white' : getAcuityStyle(p.acuity_level)}`}>
+                                        {p.acuity_level === 1 ? 'Emergency' : p.acuity_level === 2 ? 'Urgent' : 'Standard'}
+                                    </span>
+                                    <span className={`text-[10px] font-bold flex items-center gap-1 ${activePatient?.queue_id === p.queue_id ? 'text-slate-400' : 'text-slate-400'}`}>
+                                        <Clock size={12}/> {new Date(p.joined_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                    </span>
+                                </div>
+                                <h3 className={`font-bold text-sm uppercase tracking-tight truncate ${activePatient?.queue_id === p.queue_id ? 'text-white' : 'text-slate-800'}`}>
+                                    {p.patient_name}
+                                </h3>
+                                <div className="flex items-center justify-between mt-2">
+                                    <p className={`text-[10px] font-black ${activePatient?.queue_id === p.queue_id ? 'text-slate-500' : 'text-slate-400'}`}>
+                                        {p.outpatient_no}
+                                    </p>
+                                    <ChevronRight size={14} className={activePatient?.queue_id === p.queue_id ? 'text-white' : 'text-slate-200 opacity-0 group-hover:opacity-100'} />
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            </div>
 
-                    {/* Completed Log */}
-                    <div className="bg-white rounded-3xl p-6 border border-slate-50 shadow-sm opacity-80">
-                        <h3 className="text-lg font-bold text-[#1B2559] mb-4 flex items-center gap-2">
-                            <CheckCircle2 size={20} className="text-emerald-500"/> Recent Results
-                        </h3>
-                        <div className="space-y-3">
-                            {completedTests.map(test => (
-                                <div key={test.test_id} className="p-4 border border-slate-100 bg-slate-50/50 rounded-2xl">
-                                    <div className="flex justify-between items-start mb-2">
-                                        <p className="font-bold text-[#1B2559] text-sm">{test.test_name} <span className="text-[#A3AED0] font-medium ml-2">- {test.patient_name}</span></p>
-                                        <span className="text-[10px] font-bold text-slate-400">{test.date}</span>
+            {/* RIGHT PANE: Lab Workbench */}
+            <div className="flex-1 bg-white rounded-[32px] border border-slate-200 shadow-sm flex flex-col overflow-hidden relative">
+                {!activePatient ? (
+                    <div className="h-full flex flex-col items-center justify-center text-slate-300 bg-slate-50/20">
+                        <Activity size={80} strokeWidth={1} className="mb-4 opacity-50" />
+                        <h2 className="text-2xl font-black text-slate-400 uppercase tracking-tighter">Workbench Idle</h2>
+                        <p className="font-medium text-sm mt-2">Select a request from the sidebar to start processing findings.</p>
+                    </div>
+                ) : (
+                    <>
+                        <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-white">
+                            <div className="flex items-center gap-5">
+                                <div className="w-14 h-14 bg-purple-50 rounded-2xl flex items-center justify-center text-purple-600 border border-purple-100">
+                                    <TestTube2 size={28}/>
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <span className="bg-emerald-500 w-2 h-2 rounded-full animate-pulse"></span>
+                                        <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Active Analysis</span>
                                     </div>
-                                    <p className="text-sm font-medium text-emerald-700 bg-emerald-50 p-2 rounded-lg border border-emerald-100">
-                                        {test.result_summary}
+                                    <h1 className="text-3xl font-black text-slate-800 uppercase tracking-tight">{activePatient.patient_name}</h1>
+                                    <p className="text-slate-400 font-bold text-xs uppercase tracking-widest mt-1">{activePatient.outpatient_no} | {activePatient.sex}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex-1 p-8 overflow-y-auto space-y-8 bg-slate-50/30 custom-scrollbar">
+                            {/* Doctor's Request Notes */}
+                            <div className="bg-blue-50 border border-blue-100 p-6 rounded-[24px] shadow-sm relative overflow-hidden group">
+                                <div className="absolute -right-4 -top-4 text-blue-100 group-hover:scale-110 transition-transform duration-500">
+                                    <Stethoscope size={100} />
+                                </div>
+                                <div className="relative z-10">
+                                    <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                                        <AlertCircle size={14} /> Incoming Clinical Instructions
+                                    </p>
+                                    <p className="text-sm font-bold text-blue-900 leading-relaxed italic">
+                                        "{activePatient.notes || "Standard investigative panel requested. No specific clinical notes provided."}"
                                     </p>
                                 </div>
-                            ))}
+                            </div>
+
+                            {/* Results Input */}
+                            <div className="space-y-4">
+                                <label className="block text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1">Laboratory Findings & Results Summary</label>
+                                <textarea 
+                                    className="w-full p-6 bg-white border border-slate-200 rounded-[28px] text-sm font-medium leading-relaxed focus:outline-none focus:border-slate-400 transition-all shadow-sm min-h-[350px] resize-none placeholder:text-slate-300"
+                                    placeholder="Enter test parameters (e.g., Hb, WBC), analytical findings, and interpretations..."
+                                    value={testResults}
+                                    onChange={(e) => setTestResults(e.target.value)}
+                                ></textarea>
+                            </div>
                         </div>
-                    </div>
-                </div>
+
+                        {/* Footer Action */}
+                        <div className="p-6 bg-white border-t border-slate-100 shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.05)]">
+                            <button 
+                                onClick={submitResults}
+                                disabled={!testResults || isSubmitting}
+                                className="w-full py-4 bg-slate-800 text-white font-black text-xs uppercase tracking-widest rounded-2xl shadow-lg hover:bg-slate-900 hover:-translate-y-0.5 active:scale-[0.98] transition-all disabled:opacity-50 disabled:transform-none flex items-center justify-center gap-2"
+                            >
+                                {isSubmitting ? <Activity className="animate-spin" size={16} /> : <CheckCircle2 size={16}/>}
+                                {isSubmitting ? 'Processing...' : 'Verify Findings & Route to Doctor'}
+                            </button>
+                        </div>
+                    </>
+                )}
             </div>
         </div>
     );

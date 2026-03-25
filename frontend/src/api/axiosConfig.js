@@ -15,7 +15,8 @@ const api = axios.create({
 // --- REQUEST INTERCEPTOR ---
 // Automatically attaches JWT Bearer tokens to every outgoing clinical/admin request
 api.interceptors.request.use(config => {
-    const token = localStorage.getItem('token');
+    // 🚨 UPDATED TO SESSION STORAGE 🚨
+    const token = sessionStorage.getItem('token');
     if (token) {
         config.headers.Authorization = `Bearer ${token}`;
     }
@@ -31,20 +32,22 @@ api.interceptors.response.use(
     (error) => {
         // Handle 401 Unauthorized (Session Expired/Invalid)
         if (error.response && error.response.status === 401) {
-            console.warn("Medicare Session Expired. Clearing local state...");
+            console.warn("Medicare Session Expired. Clearing tab session state...");
             
-            // Purge all Medicare-specific session data
-            localStorage.removeItem('token');
-            localStorage.removeItem('userRole');
-            localStorage.removeItem('userName');
+            // 🚨 UPDATED TO SESSION STORAGE 🚨
+            // Purge all Medicare-specific session data for this tab
+            sessionStorage.removeItem('token');
+            sessionStorage.removeItem('userRole');
+            sessionStorage.removeItem('userName');
+            sessionStorage.removeItem('userId'); // Don't forget to clear the userId too!
             
             // Force a hard redirect to the login portal
             window.location.href = '/login'; 
         }
         
-        // Handle 403 Forbidden (RBAC violation - e.g., Secretary trying to view Lab)
+        // Handle 403 Forbidden (RBAC violation - e.g., Receptionist trying to view Lab)
         if (error.response && error.response.status === 403) {
-            alert("Access Denied: You do not have the required clinical permissions.");
+            alert("Access Denied: You do not have the required clinical clearances.");
         }
 
         return Promise.reject(error);
