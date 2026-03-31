@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api/axiosConfig';
-import { BedDouble, User, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { BedDouble, User, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 
 const Beds = () => {
     const [beds, setBeds] = useState([]);
@@ -52,62 +52,74 @@ const Beds = () => {
         return acc;
     }, {});
 
-    if (loading) return <div className="text-[#A3AED0] font-medium p-8">Loading Bed Matrix...</div>;
+    if (loading) return <div className="flex h-[85vh] items-center justify-center"><Loader2 className="animate-spin text-orange-600" size={40}/></div>;
 
     return (
-        <div className="max-w-7xl mx-auto space-y-8">
-            <div className="flex justify-between items-end">
+        <div className="w-full max-w-[1400px] mx-auto flex flex-col gap-4 lg:gap-6 font-sans animate-in fade-in duration-500">
+            
+            {/* Header: Stacks on mobile, row on tablet/desktop */}
+            <div className="flex flex-col md:flex-row justify-between md:items-end gap-4 md:gap-0 bg-white p-5 lg:p-8 rounded-[24px] lg:rounded-[32px] border border-slate-200 shadow-sm shrink-0">
                 <div>
-                    <h2 className="text-2xl font-bold text-[#1B2559]">Bed Allocation & Admissions</h2>
-                    <p className="text-sm text-[#A3AED0] mt-1">Real-time ward telemetry and capacity management</p>
+                    <h1 className="text-2xl lg:text-3xl font-black text-slate-800 tracking-tight flex items-center gap-2 lg:gap-3">
+                        <BedDouble className="text-orange-500 lg:w-8 lg:h-8" size={24}/> Bed Allocation
+                    </h1>
+                    <p className="text-slate-500 font-medium text-xs lg:text-sm mt-1 lg:mt-2">Real-time ward telemetry and capacity management</p>
                 </div>
                 
                 {/* Global Patient Selector for Admissions */}
-                <div className="flex items-center gap-3 bg-white p-2 rounded-xl border border-slate-100 shadow-sm">
-                    <User size={18} className="text-[#A3AED0] ml-2" />
+                <div className="flex items-center gap-2 lg:gap-3 bg-slate-50 p-2 rounded-xl lg:rounded-2xl border border-slate-200 shadow-inner w-full md:w-auto">
+                    <User size={16} className="text-slate-400 ml-2 shrink-0 lg:w-[18px] lg:h-[18px]" />
                     <select 
-                        className="bg-transparent outline-none text-sm font-medium text-[#1B2559] w-64 p-1"
+                        className="bg-transparent outline-none text-xs lg:text-sm font-bold text-slate-700 w-full md:w-64 p-1.5 lg:p-2 focus:text-orange-600 transition-colors"
                         value={selectedPatient}
                         onChange={(e) => setSelectedPatient(e.target.value)}
                     >
                         <option value="">Select Patient for Admission...</option>
                         {patients.map(p => (
-                            <option key={p.patient_id} value={p.patient_id}>{p.first_name} {p.last_name}</option>
+                            <option key={p.patient_id || p.id} value={p.patient_id || p.id}>
+                                {p.surname} {p.other_names}
+                            </option>
                         ))}
                     </select>
                 </div>
             </div>
 
             {Object.keys(wards).length === 0 ? (
-                <div className="text-center py-12 bg-white rounded-3xl border border-slate-50">
-                    <p className="text-[#A3AED0] font-medium">No wards configured. Run the initial seeding script.</p>
+                <div className="text-center py-12 lg:py-16 bg-white rounded-[24px] lg:rounded-[32px] border border-slate-200 shadow-sm">
+                    <AlertCircle className="mx-auto mb-4 text-slate-300" size={48} strokeWidth={1.5} />
+                    <p className="text-slate-500 font-bold text-sm lg:text-base">No wards configured. Run the initial seeding script.</p>
                 </div>
             ) : (
                 Object.entries(wards).map(([wardName, wardBeds]) => (
-                    <div key={wardName} className="bg-white rounded-3xl p-8 shadow-sm border border-slate-50">
-                        <h3 className="text-lg font-bold text-[#1B2559] mb-6 border-b border-slate-50 pb-4">{wardName}</h3>
+                    <div key={wardName} className="bg-white rounded-[24px] lg:rounded-[32px] p-5 lg:p-8 shadow-sm border border-slate-200 overflow-hidden">
+                        <h3 className="text-lg lg:text-xl font-black text-slate-800 mb-5 lg:mb-6 border-b border-slate-100 pb-3 lg:pb-4 uppercase tracking-tight">
+                            {wardName}
+                        </h3>
                         
-                        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                        {/* Grid adapts to all screen sizes */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 lg:gap-6">
                             {wardBeds.map(bed => (
-                                <div key={bed.bed_id} className={`p-5 rounded-2xl border transition-all ${
-                                    bed.status === 'Available' ? 'border-emerald-100 bg-emerald-50/30' :
-                                    bed.status === 'Occupied' ? 'border-blue-100 bg-blue-50/30' :
-                                    'border-orange-100 bg-orange-50/30'
+                                <div key={bed.bed_id} className={`p-4 lg:p-5 rounded-[20px] lg:rounded-[24px] border transition-all duration-300 hover:shadow-md ${
+                                    bed.status === 'Available' ? 'border-emerald-200 bg-emerald-50/50 hover:border-emerald-300' :
+                                    bed.status === 'Occupied' ? 'border-blue-200 bg-blue-50/50 hover:border-blue-300' :
+                                    'border-orange-200 bg-orange-50/50 hover:border-orange-300'
                                 }`}>
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div className={`p-2 rounded-lg ${
+                                    <div className="flex justify-between items-start mb-3 lg:mb-4">
+                                        <div className={`p-2 lg:p-2.5 rounded-xl lg:rounded-2xl ${
                                             bed.status === 'Available' ? 'bg-emerald-100 text-emerald-600' :
                                             bed.status === 'Occupied' ? 'bg-blue-100 text-blue-600' :
                                             'bg-orange-100 text-orange-600'
                                         }`}>
-                                            <BedDouble size={20} />
+                                            <BedDouble size={18} className="lg:w-[22px] lg:h-[22px]" />
                                         </div>
-                                        <span className="text-xs font-bold text-slate-400">#{bed.bed_number}</span>
+                                        <span className="text-[10px] lg:text-xs font-black text-slate-400 bg-white px-2 lg:px-2.5 py-1 rounded-md shadow-sm border border-slate-100">
+                                            #{bed.bed_number}
+                                        </span>
                                     </div>
                                     
-                                    <div className="mb-4 h-10">
-                                        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Status</p>
-                                        <p className={`font-bold ${
+                                    <div className="mb-4 lg:mb-5 h-10">
+                                        <p className="text-[9px] lg:text-[10px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Status</p>
+                                        <p className={`text-sm lg:text-base font-black truncate ${
                                             bed.status === 'Available' ? 'text-emerald-700' :
                                             bed.status === 'Occupied' ? 'text-blue-700' :
                                             'text-orange-700'
@@ -117,21 +129,23 @@ const Beds = () => {
                                     </div>
 
                                     {/* Action Buttons based on State Machine */}
-                                    {bed.status === 'Available' && (
-                                        <button onClick={() => handleAdmit(bed.bed_id)} className="w-full py-2 bg-emerald-600 text-white text-xs font-bold rounded-lg shadow-sm hover:bg-emerald-700 transition-colors">
-                                            Admit Patient
-                                        </button>
-                                    )}
-                                    {bed.status === 'Occupied' && (
-                                        <button onClick={() => handleStateChange(bed.bed_id, 'discharge')} className="w-full py-2 bg-slate-800 text-white text-xs font-bold rounded-lg shadow-sm hover:bg-slate-900 transition-colors">
-                                            Discharge
-                                        </button>
-                                    )}
-                                    {bed.status === 'Maintenance' && (
-                                        <button onClick={() => handleStateChange(bed.bed_id, 'clean')} className="w-full py-2 bg-orange-500 text-white text-xs font-bold rounded-lg shadow-sm hover:bg-orange-600 transition-colors flex items-center justify-center gap-2">
-                                            <CheckCircle2 size={14} /> Mark Clean
-                                        </button>
-                                    )}
+                                    <div className="mt-auto border-t border-slate-900/5 pt-3 lg:pt-4">
+                                        {bed.status === 'Available' && (
+                                            <button onClick={() => handleAdmit(bed.bed_id)} className="w-full py-2.5 lg:py-3 bg-emerald-600 text-white text-[10px] lg:text-xs font-black uppercase tracking-widest rounded-xl lg:rounded-2xl shadow-sm hover:bg-emerald-700 active:scale-95 transition-all">
+                                                Admit Patient
+                                            </button>
+                                        )}
+                                        {bed.status === 'Occupied' && (
+                                            <button onClick={() => handleStateChange(bed.bed_id, 'discharge')} className="w-full py-2.5 lg:py-3 bg-slate-800 text-white text-[10px] lg:text-xs font-black uppercase tracking-widest rounded-xl lg:rounded-2xl shadow-sm hover:bg-slate-900 active:scale-95 transition-all">
+                                                Discharge
+                                            </button>
+                                        )}
+                                        {bed.status === 'Maintenance' && (
+                                            <button onClick={() => handleStateChange(bed.bed_id, 'clean')} className="w-full py-2.5 lg:py-3 bg-orange-500 text-white text-[10px] lg:text-xs font-black uppercase tracking-widest rounded-xl lg:rounded-2xl shadow-sm hover:bg-orange-600 active:scale-95 transition-all flex items-center justify-center gap-2">
+                                                <CheckCircle2 size={16} className="lg:w-[18px] lg:h-[18px]" /> Mark Clean
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                             ))}
                         </div>

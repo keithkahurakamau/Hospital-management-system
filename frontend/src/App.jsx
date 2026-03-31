@@ -5,15 +5,16 @@ import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Patients from './pages/Patients';
-import MedicalRecords from './pages/MedicalRecords';
+import PatientProfile from './pages/PatientProfile';
+import ClinicalDesk from './pages/ClinicalDesk'; 
 import Billing from './pages/Billing';
-import PharmacyPOS from './pages/PharmacyPOS'; 
+import Pharmacy from './pages/Pharmacy'; 
 import Beds from './pages/Beds'; 
 import Laboratory from './pages/Laboratory';
 import Reports from './pages/Reports';
 import Appointments from './pages/Appointments';
-import Doctors from './pages/Doctors'; 
 import UserManagement from './pages/UserManagement'; 
+import Inventory from './pages/Inventory';
 
 function App() {
     // CHECKING SESSION STORAGE INSTEAD OF LOCAL
@@ -45,15 +46,17 @@ function App() {
                                 <Routes>
                                     <Route path="/" element={<Dashboard />} />
                                     <Route path="/patients" element={<Patients />} />
+                                    <Route path="/patients/:id" element={<PatientProfile />} /> 
+                                    
                                     <Route path="/billing" element={<Billing />} />
                                     <Route path="/appointments" element={<Appointments />} />
                                     <Route path="/beds" element={<Beds />} />
                                     
                                     {/* Role Specific Components */}
-                                    <Route path="/doctors" element={<Doctors />} />
-                                    <Route path="/records" element={<MedicalRecords />} />
+                                    <Route path="/records" element={<ClinicalDesk />} /> 
                                     <Route path="/lab" element={<Laboratory />} />
-                                    <Route path="/pharmacy" element={<PharmacyPOS />} />
+                                    <Route path="/pharmacy" element={<Pharmacy/>} />
+                                    <Route path="/inventory" element={<Inventory />} />
                                     <Route path="/users" element={<UserManagement />} />
                                     <Route path="/reports" element={<Reports />} />
                                     

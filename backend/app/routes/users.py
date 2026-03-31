@@ -33,7 +33,8 @@ class RoleCreate(BaseModel):
 SYSTEM_PRIVILEGES = {
     "manage_users": "Manage Staff & Access Control",
     "view_financials": "View Financial Ledger & Billing",
-    "manage_inventory": "Manage Pharmacy & Inventory",
+    "manage_inventory": "Manage Pharmacy & POS",
+    "manage_stock": "Manage Central Inventory",  # <--- THE NEW PRIVILEGE
     "consult_patients": "Clinical Consultation & Records",
     "register_patients": "Patient Registration & Triage",
     "manage_labs": "Process Laboratory Tests",
@@ -46,13 +47,12 @@ DEFAULT_PRIVILEGES = {
     "ADMIN": {k: True for k in SYSTEM_PRIVILEGES.keys()}, 
     "DOCTOR": {"consult_patients": True, "view_reports": True},
     "RECEPTIONIST": {"register_patients": True, "view_financials": True, "manage_appointments": True, "manage_beds": True},
-    "PHARMACIST": {"manage_inventory": True, "view_financials": True},
+    "PHARMACIST": {"manage_inventory": True, "manage_stock": True, "view_financials": True}, # Pharmacist gets it by default
     "LAB_TECH": {"manage_labs": True}
 }
 
 # --- USER MANAGEMENT ENDPOINTS ---
 
-# FIXED: Strict trailing slash to prevent 405 redirects
 @router.post("/", status_code=status.HTTP_201_CREATED)
 def create_user(user: UserCreate, db: Session = Depends(get_db)):
     existing_user = db.query(User).filter(User.email == user.email).first()
@@ -71,7 +71,6 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
     db.refresh(new_user)
     return {"message": "User created successfully", "user_id": new_user.user_id}
 
-# FIXED: Strict trailing slash to prevent 405 redirects
 @router.get("/")
 def get_all_users(db: Session = Depends(get_db)):
     users = db.query(User).all()
@@ -141,32 +140,23 @@ async def update_role_privileges(role_name: str, req: PrivilegeUpdate, db: Sessi
 @router.get("/me/permissions/")
 def get_my_permissions(current_user: dict = Depends(get_current_user)):
     role = current_user.get("role")
-
-@router.delete("/roles/{role_name}")
-def delete_role(role_name: str, db: Session = Depends(get_db)):
-    """Permanently deletes a custom role if no users are assigned to it."""
     
-    # 1. Protect Core System Roles
-    base_roles = ["ADMIN", "DOCTOR", "RECEPTIONIST", "PHARMACIST", "LAB_TECH"]
-    if role_name in base_roles:
-        raise HTTPException(status_code=403, detail="Cannot delete core system roles.")
-    
-    # 2. Check if any active or suspended users are holding this role
-    assigned_user = db.query(User).filter(User.role == role_name).first()
-    if assigned_user:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Cannot delete. There are users currently assigned to the {role_name} role. Please reassign them first."
-        )
-        
-    # 3. Delete from the privileges dictionary
-    if role_name in DEFAULT_PRIVILEGES:
-        del DEFAULT_PRIVILEGES[role_name]
-        
-    return {"message": f"Role {role_name} successfully deleted."}
-    
-    # ADMIN SUPER-OVERRIDE: Admins always have 100% access
     if role == "ADMIN":
         return {"role": role, "permissions": {k: True for k in SYSTEM_PRIVILEGES.keys()}}
         
     return {"role": role, "permissions": DEFAULT_PRIVILEGES.get(role, {})}
+
+@router.delete("/roles/{role_name}")
+def delete_role(role_name: str, db: Session = Depends(get_db)):
+    base_roles = ["ADMIN", "DOCTOR", "RECEPTIONIST", "PHARMACIST", "LAB_TECH"]
+    if role_name in base_roles:
+        raise HTTPException(status_code=403, detail="Cannot delete core system roles.")
+    
+    assigned_user = db.query(User).filter(User.role == role_name).first()
+    if assigned_user:
+        raise HTTPException(status_code=400, detail=f"Cannot delete. There are users currently assigned to the {role_name} role. Please reassign them first.")
+        
+    if role_name in DEFAULT_PRIVILEGES:
+        del DEFAULT_PRIVILEGES[role_name]
+        
+    return {"message": f"Role {role_name} successfully deleted."}

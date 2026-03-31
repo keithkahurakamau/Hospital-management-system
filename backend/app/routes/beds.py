@@ -26,7 +26,8 @@ def get_all_beds(db: Session = Depends(get_db)):
             "ward_name": b.ward_name,
             "bed_number": b.bed_number,
             "status": b.status,
-            "patient_name": f"{b.patient.first_name} {b.patient.last_name}" if b.patient else None,
+            # FIXED: Updated to use 'other_names' and 'surname' instead of first/last name
+            "patient_name": f"{b.patient.other_names} {b.patient.surname}" if b.patient else None,
             "patient_id": b.patient_id
         } for b in beds
     ]
