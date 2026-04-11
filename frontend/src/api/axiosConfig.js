@@ -5,8 +5,8 @@ import axios from 'axios';
  * Handles global request/response lifecycle and session security.
  */
 const api = axios.create({
-    // Logic: Use environment variable if available (Vite), otherwise default to local dev
-    baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000/api',
+    // Logic: Use environment variable if available (Vite), otherwise default to the live Render cloud backend
+    baseURL: import.meta.env.VITE_API_URL || 'https://medicare-backend-u7r1.onrender.com',
     headers: {
         'Content-Type': 'application/json'
     }
