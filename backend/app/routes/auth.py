@@ -70,32 +70,3 @@ def logout(response: Response):
         samesite="none"
     )
     return {"message": "Successfully logged out"}
-
-@router.get("/seed-admin-secret-url")
-def seed_admin_account(db: Session = Depends(get_db)):
-    """Temporary backdoor to seed the admin account without Render Shell."""
-    
-    admin_email = "keith.kamau@medicare.co.ke"
-    
-    # Check if admin already exists
-    existing_admin = db.query(User).filter(User.email == admin_email).first()
-    if existing_admin:
-        return {"message": f"✅ Admin account ({admin_email}) already exists!"}
-        
-    # Create the Admin
-    admin_user = User(
-        full_name="Keith Kamau",
-        email=admin_email,
-        hashed_password=get_password_hash("Admin@2026!"), 
-        role="ADMIN", 
-        is_active=True
-    )
-    
-    db.add(admin_user)
-    db.commit()
-    
-    return {
-        "message": "🎉 SUCCESS! Database seeded.",
-        "email": admin_email,
-        "password": "Admin@2026!"
-    }
