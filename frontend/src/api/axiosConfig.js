@@ -5,7 +5,6 @@ import axios from 'axios';
  * Now optimized for HttpOnly Cookie Security.
  */
 const api = axios.create({
-    // 👇 ADDED /api TO THE END 👇
     baseURL: import.meta.env.VITE_API_URL || 'https://medicare-backend-u7r1.onrender.com/api',
     headers: {
         'Content-Type': 'application/json'
@@ -18,19 +17,29 @@ const api = axios.create({
 api.interceptors.response.use(
     (response) => response,
     (error) => {
+        // Capture the exact URL that triggered this error
+        const originalRequestUrl = error.config?.url || '';
+
         if (error.response && error.response.status === 401) {
-            console.warn("Medicare Session Expired.");
             
-            // We still clear the non-sensitive UI data
-            sessionStorage.removeItem('userRole');
-            sessionStorage.removeItem('userName');
-            sessionStorage.removeItem('userId'); 
-            
-            window.location.href = '/login'; 
+            // 🚨 EXCEPTION LOGIC: Only force a logout/redirect if the user is NOT on the login route.
+            if (!originalRequestUrl.includes('/auth/login')) {
+                console.warn("Medicare Session Expired or Invalid Cookie.");
+                
+                // Clear the non-sensitive UI state
+                sessionStorage.removeItem('userRole');
+                sessionStorage.removeItem('userName');
+                sessionStorage.removeItem('userId'); 
+                
+                // Boot them back to the login screen
+                window.location.href = '/login'; 
+            }
+            // If the URL *does* include '/auth/login', the interceptor does nothing and 
+            // allows the Login component's try/catch block to handle the UI error message.
         }
         
         if (error.response && error.response.status === 403) {
-            alert("Access Denied: You do not have the required clearances.");
+            alert("Access Denied: You do not have the required clinical or administrative clearances.");
         }
 
         return Promise.reject(error);

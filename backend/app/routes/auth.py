@@ -5,6 +5,10 @@ from app.config.database import get_db
 from app.models.user import User
 from app.core.security import verify_password, create_access_token
 from pydantic import BaseModel
+from app.core.security import get_password_hash 
+
+# Add this if it's missing (it tells Python what a User is)
+from app.models.user import User
 
 router = APIRouter(prefix="/api/auth", tags=["Security"])
 
@@ -76,7 +80,7 @@ def logout(response: Response):
 def seed_admin_account(db: Session = Depends(get_db)):
     """Temporary backdoor to seed the admin account without Render Shell."""
     
-    admin_email = "admin@medicare.io"
+    admin_email = "keith.kamau@medicare.co.ke"
     
     # Check if admin already exists
     existing_admin = db.query(User).filter(User.email == admin_email).first()
@@ -85,7 +89,7 @@ def seed_admin_account(db: Session = Depends(get_db)):
         
     # Create the Admin
     admin_user = User(
-        full_name="System Administrator",
+        full_name="Keith Kamau",
         email=admin_email,
         hashed_password=get_password_hash("Admin@2026!"), 
         role="ADMIN", 
@@ -98,6 +102,5 @@ def seed_admin_account(db: Session = Depends(get_db)):
     return {
         "message": "🎉 SUCCESS! Database seeded.",
         "email": admin_email,
-        "password": "Admin@2026!",
-        "action_required": "Please delete this route from your code now for security!"
+        "password": "Admin@2026!"
     }
