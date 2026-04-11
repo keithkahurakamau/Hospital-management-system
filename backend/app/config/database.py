@@ -7,15 +7,24 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # --- DATABASE CONFIGURATION ---
-# Fetching variables from .env with default fallbacks for local dev safety
-DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "")
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = os.getenv("DB_PORT", "5432")
-DB_NAME = os.getenv("DB_NAME", "medicare_db")
+# First, try to get the full DATABASE_URL (used by cloud providers like Render)
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Construct the standard PostgreSQL connection URI
-SQLALCHEMY_DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+if DATABASE_URL:
+    # Render uses 'postgres://' but modern SQLAlchemy requires 'postgresql://'
+    if DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    SQLALCHEMY_DATABASE_URL = DATABASE_URL
+else:
+    # Fallback to local individual environment variables
+    DB_USER = os.getenv("DB_USER", "postgres")
+    DB_PASSWORD = os.getenv("DB_PASSWORD", "")
+    DB_HOST = os.getenv("DB_HOST", "localhost")
+    DB_PORT = os.getenv("DB_PORT", "5432")
+    DB_NAME = os.getenv("DB_NAME", "medicare_db")
+    
+    # Construct the standard PostgreSQL connection URI
+    SQLALCHEMY_DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 # --- SQLALCHEMY ENGINE & SESSION ---
 # The engine is the "pipeline" to the database

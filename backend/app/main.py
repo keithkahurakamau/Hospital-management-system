@@ -3,15 +3,25 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from app.config.database import engine, Base
 
+# =======================================================================
 # --- CRITICAL: MODEL REGISTRATION ---
-# We must import all models here so SQLAlchemy registers them 
+# We must import ALL models here so SQLAlchemy registers them 
 # before calling Base.metadata.create_all(bind=engine)
+# =======================================================================
 from app.models.user import User
 from app.models.patient import Patient
-from app.models.appointment import Appointment  # Added to fix relationship visibility
+from app.models.appointment import Appointment
 from app.models.queue import PatientQueue
 from app.models.medical_record import MedicalRecord
-from app.models.pharmacy import DrugInventory, DispenseLog 
+from app.models.pharmacy import DrugInventory, DispenseLog
+from app.models.bed import Bed
+from app.models.doctor import Doctor
+
+# --- NEW: Phase 1 & 2 Models ---
+from app.models.laboratory import LabTest, LabTestCatalog, LabTestRequiredItem
+from app.models.inventory import Location, InventoryItem, StockBatch, InventoryUsageLog
+from app.models.billing import Billing, InvoiceItem
+# =======================================================================
 
 # --- ROUTER IMPORTS ---
 from app.routes.patients import router as patients_router
@@ -27,7 +37,8 @@ from app.routes.websockets import router as websocket_router
 from app.routes.queue import router as queue_router
 from app.routes.auth import router as auth_router
 from app.routes.clinical import router as clinical_router
-from app.routes import users
+from app.routes.users import router as users_router
+from app.routes.admin import router as admin_router
 
 # --- CORE UTILS ---
 from app.core.websocket import manager
@@ -56,6 +67,7 @@ origins = [
     "http://localhost:5173",  
     "http://127.0.0.1:5173",
     "http://localhost:3000",
+    "https://hospital-management-system-7e9s.vercel.app/"
 ]
 
 app.add_middleware(
@@ -79,9 +91,9 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int):
 
 # --- ROUTER REGISTRATION ---
 app.include_router(auth_router)
-app.include_router(users.router)
+app.include_router(users_router)
 app.include_router(patients_router)
-app.include_router(appointments_router) # /api/appointments
+app.include_router(appointments_router) 
 app.include_router(doctors_router)
 app.include_router(billing_router)
 app.include_router(analytics_router)
@@ -92,6 +104,7 @@ app.include_router(lab_router)
 app.include_router(websocket_router) 
 app.include_router(queue_router) 
 app.include_router(clinical_router) 
+app.include_router(admin_router)
 
 @app.get("/")
 async def root():

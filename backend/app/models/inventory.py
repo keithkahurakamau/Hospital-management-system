@@ -43,3 +43,30 @@ class StockBatch(Base):
     # Relationships
     item = relationship("InventoryItem")
     location = relationship("Location")
+
+# --- NEW: Inventory Usage Log ---
+class InventoryUsageLog(Base):
+    """Tracks whenever an item is consumed (e.g., by a Lab Tech doing a test)"""
+    __tablename__ = "inventory_usage_logs"
+    __table_args__ = {'extend_existing': True}
+
+    log_id = Column(Integer, primary_key=True, index=True)
+    
+    # What was used?
+    item_id = Column(Integer, ForeignKey("inventory_items.item_id"), nullable=False)
+    item_name = Column(String(150), nullable=False) # Historical record if item is later deleted
+    quantity_used = Column(Float, nullable=False)
+    
+    # Who used it and where?
+    department = Column(String(100), nullable=False) # e.g., "Laboratory"
+    used_by_user_id = Column(Integer, ForeignKey("users.user_id"), nullable=False)
+    
+    # Why was it used? (Link back to the Lab Test or Prescription)
+    reference_type = Column(String(50), nullable=True) # e.g., "LabTest"
+    reference_id = Column(Integer, nullable=True)      # e.g., lab_tests.test_id
+    
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    item = relationship("InventoryItem")
+    user = relationship("User")

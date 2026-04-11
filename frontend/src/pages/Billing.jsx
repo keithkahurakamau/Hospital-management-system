@@ -3,7 +3,7 @@ import api from '../api/axiosConfig';
 import { 
     Wallet, TrendingUp, Receipt, Activity, Download, Calendar, 
     CreditCard, User, Banknote, Smartphone, CheckCircle2, 
-    XCircle, Loader2, ArrowRight, FileText, Printer, Calculator
+    XCircle, Loader2, ArrowRight, FileText, Printer, Calculator, ChevronRight
 } from 'lucide-react';
 
 const Billing = () => {
@@ -18,28 +18,42 @@ const Billing = () => {
     const [transactions, setTransactions] = useState([]);
 
     // --- CASHIER POS STATE ---
-    const [pendingInvoices, setPendingInvoices] = useState([]);
-    const [selectedInvoice, setSelectedInvoice] = useState(null);
+    const [pendingPatients, setPendingPatients] = useState([]);
+    const [selectedInvoice, setSelectedInvoice] = useState(null); // Will hold the unbilled items
     const [paymentMethod, setPaymentMethod] = useState('Cash');
     const [paymentState, setPaymentState] = useState('idle'); 
     const [receiptData, setReceiptData] = useState(null);
 
     useEffect(() => {
         fetchData();
-        const interval = setInterval(fetchData, 15000); // Auto-refresh queue
+        const interval = setInterval(fetchQueueOnly, 15000); // Auto-refresh queue
         return () => clearInterval(interval);
     }, []);
 
+    const fetchQueueOnly = async () => {
+        try {
+            const pendingRes = await api.get('/billing/queue');
+            setPendingPatients(pendingRes.data || []);
+            
+            // Auto-deselect if patient was paid elsewhere
+            if (selectedInvoice) {
+                const stillInQueue = pendingRes.data.find(q => q.patient_id === selectedInvoice.patient_id);
+                if (!stillInQueue && paymentState === 'idle') setSelectedInvoice(null);
+            }
+        } catch (err) { console.error("Queue refresh failed", err); }
+    }
+
     const fetchData = async () => {
         try {
+            // NOTE: We will need to build the /overview and /transactions backend routes next to populate the ledger!
             const [overviewRes, txRes, pendingRes] = await Promise.all([
-                api.get('/billing/overview'),
-                api.get('/billing/transactions'),
-                api.get('/billing/pending')
+                api.get('/billing/overview').catch(() => ({ data: overview })), // Mock fallback if endpoint not built yet
+                api.get('/billing/transactions').catch(() => ({ data: [] })), // Mock fallback
+                api.get('/billing/queue') // <-- NEW ENDPOINT
             ]);
             setOverview(overviewRes.data);
             setTransactions(txRes.data);
-            setPendingInvoices(pendingRes.data);
+            setPendingPatients(pendingRes.data || []);
         } catch (err) {
             console.error("Failed to fetch billing data", err);
         } finally {
@@ -47,17 +61,39 @@ const Billing = () => {
         }
     };
 
+    // NEW: Fetch exact line items when a patient is clicked
+    const handleSelectPatient = async (patient) => {
+        try {
+            const res = await api.get(`/billing/unbilled/${patient.patient_id}`);
+            setSelectedInvoice({
+                patient_id: patient.patient_id,
+                patient_name: patient.patient_name,
+                outpatient_no: patient.outpatient_no,
+                items: res.data.items,
+                total_amount: res.data.total_due
+            });
+        } catch (err) {
+            alert("Failed to pull billing details.");
+        }
+    };
+
     const handleProcessPayment = async () => {
-        if (!selectedInvoice) return alert("Select an invoice first.");
+        if (!selectedInvoice || selectedInvoice.items.length === 0) return alert("No items to bill.");
         setPaymentState('processing');
 
         try {
+            // Simulate M-Pesa delay for UI effect
             if (paymentMethod === 'M-PESA') await new Promise(resolve => setTimeout(resolve, 3000));
             
-            await api.post(`/billing/${selectedInvoice.invoice_id}/pay`, { payment_method: paymentMethod });
+            // NEW ENDPOINT
+            const res = await api.post('/billing/process-payment', { 
+                patient_id: selectedInvoice.patient_id,
+                items: selectedInvoice.items,
+                payment_method: paymentMethod 
+            });
             
             setReceiptData({
-                transactionId: `INV-${selectedInvoice.invoice_id.toString().padStart(6, '0')}`,
+                transactionId: `INV-${res.data.invoice_id.toString().padStart(6, '0')}`,
                 date: new Date().toLocaleString(),
                 method: paymentMethod,
                 items: selectedInvoice.items,
@@ -125,11 +161,11 @@ const Billing = () => {
                     
                     <div className="flex items-center justify-between sm:justify-start gap-2 lg:gap-3 bg-white/10 px-4 lg:px-5 py-2.5 lg:py-3 rounded-xl lg:rounded-2xl border border-white/5">
                         <div className="flex items-center gap-2">
-                            <Receipt size={16} className={`lg:w-[18px] lg:h-[18px] ${pendingInvoices.length > 0 ? "text-amber-400" : "text-slate-400"}`}/>
-                            <span className="text-xs lg:text-sm font-black text-white">Pending Invoices:</span>
+                            <Receipt size={16} className={`lg:w-[18px] lg:h-[18px] ${pendingPatients.length > 0 ? "text-amber-400" : "text-slate-400"}`}/>
+                            <span className="text-xs lg:text-sm font-black text-white">Pending:</span>
                         </div>
-                        <span className={`text-xs lg:text-sm font-black px-2 lg:px-3 py-0.5 lg:py-1 rounded-lg lg:rounded-xl ${pendingInvoices.length > 0 ? "bg-amber-500 text-slate-900 animate-pulse" : "bg-white/20 text-white"}`}>
-                            {pendingInvoices.length}
+                        <span className={`text-xs lg:text-sm font-black px-2 lg:px-3 py-0.5 lg:py-1 rounded-lg lg:rounded-xl ${pendingPatients.length > 0 ? "bg-amber-500 text-slate-900 animate-pulse" : "bg-white/20 text-white"}`}>
+                            {pendingPatients.length}
                         </span>
                     </div>
                 </div>
@@ -145,23 +181,22 @@ const Billing = () => {
                             <h3 className="font-black text-slate-800 flex items-center gap-2"><FileText size={16} className="lg:w-[18px] lg:h-[18px] text-amber-500"/> Unpaid Invoices</h3>
                         </div>
                         <div className="flex-1 overflow-y-auto p-3 lg:p-4 space-y-2 lg:space-y-3 custom-scrollbar">
-                            {pendingInvoices.length === 0 ? (
-                                <div className="text-center mt-10 text-slate-400 text-sm font-bold">No pending invoices.</div>
+                            {pendingPatients.length === 0 ? (
+                                <div className="text-center mt-10 text-slate-400 text-sm font-bold flex flex-col items-center gap-2">
+                                    <CheckCircle2 size={32} className="text-emerald-400 opacity-50"/>
+                                    No pending balances.
+                                </div>
                             ) : (
-                                pendingInvoices.map((inv) => (
-                                    <div key={inv.invoice_id} onClick={() => setSelectedInvoice(inv)}
-                                        className={`p-4 lg:p-5 rounded-[20px] lg:rounded-2xl border transition-all cursor-pointer ${selectedInvoice?.invoice_id === inv.invoice_id ? 'bg-emerald-50 border-emerald-400 shadow-md' : 'bg-white border-slate-200 hover:border-emerald-200'}`}
+                                pendingPatients.map((patient) => (
+                                    <div key={patient.patient_id} onClick={() => handleSelectPatient(patient)}
+                                        className={`p-4 lg:p-5 rounded-[20px] lg:rounded-2xl border transition-all cursor-pointer group ${selectedInvoice?.patient_id === patient.patient_id ? 'bg-emerald-50 border-emerald-400 shadow-md' : 'bg-white border-slate-200 hover:border-emerald-200'}`}
                                     >
-                                        <div className="flex justify-between items-start mb-2 lg:mb-3">
+                                        <div className="flex justify-between items-start">
                                             <div>
-                                                <p className="font-black text-xs lg:text-sm text-slate-800 uppercase tracking-tight">{inv.patient_name}</p>
-                                                <p className="text-[9px] lg:text-[10px] font-bold text-slate-400 mt-0.5">OP: {inv.outpatient_no}</p>
+                                                <p className="font-black text-xs lg:text-sm text-slate-800 uppercase tracking-tight">{patient.patient_name}</p>
+                                                <p className="text-[9px] lg:text-[10px] font-bold text-slate-400 mt-0.5">OP: {patient.outpatient_no}</p>
                                             </div>
-                                            <span className="text-[9px] lg:text-[10px] font-black text-amber-600 bg-amber-50 px-1.5 lg:px-2 py-0.5 lg:py-1 rounded border border-amber-100 uppercase tracking-widest">INV-{inv.invoice_id}</span>
-                                        </div>
-                                        <div className="flex justify-between items-end border-t border-slate-100/50 pt-2 lg:pt-3">
-                                            <p className="text-[9px] lg:text-[10px] font-bold text-slate-400">{inv.items.length} Line Items</p>
-                                            <p className="font-black text-emerald-700 text-sm lg:text-base"><span className="text-[9px] lg:text-[10px] text-emerald-600/50 mr-1">KES</span>{inv.total_amount.toFixed(2)}</p>
+                                            <ChevronRight size={16} className={selectedInvoice?.patient_id === patient.patient_id ? 'text-emerald-500' : 'text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity'} />
                                         </div>
                                     </div>
                                 ))
@@ -174,15 +209,15 @@ const Billing = () => {
                         {!selectedInvoice ? (
                             <div className="flex-1 flex flex-col items-center justify-center text-slate-300 py-16 lg:py-0">
                                 <Receipt size={40} strokeWidth={1} className="mb-3 lg:mb-4 lg:w-12 lg:h-12" />
-                                <p className="text-xs lg:text-sm font-bold">No Invoice Selected</p>
-                                <p className="text-[10px] lg:text-[11px] mt-1 text-slate-400">Select a pending invoice from the queue to process payment.</p>
+                                <p className="text-xs lg:text-sm font-bold">No Account Selected</p>
+                                <p className="text-[10px] lg:text-[11px] mt-1 text-slate-400">Select a patient from the queue to process their payment.</p>
                             </div>
                         ) : (
                             <>
                                 <div className="p-5 lg:p-8 border-b border-slate-100 bg-slate-50/30 flex justify-between items-center">
                                     <div>
                                         <h2 className="text-xl lg:text-2xl font-black text-slate-800 uppercase tracking-tight">{selectedInvoice.patient_name}</h2>
-                                        <p className="text-[10px] lg:text-xs font-bold text-slate-400 mt-0.5 lg:mt-1">Invoice ID: INV-{selectedInvoice.invoice_id.toString().padStart(6, '0')}</p>
+                                        <p className="text-[10px] lg:text-xs font-bold text-slate-400 mt-0.5 lg:mt-1">OP Number: {selectedInvoice.outpatient_no}</p>
                                     </div>
                                 </div>
                                 
@@ -193,6 +228,7 @@ const Billing = () => {
                                             <thead className="bg-slate-50 text-[9px] lg:text-[10px] font-black uppercase tracking-widest text-slate-400">
                                                 <tr>
                                                     <th className="p-3 lg:p-4 rounded-tl-xl">Item Description</th>
+                                                    <th className="p-3 lg:p-4 text-center">Category</th>
                                                     <th className="p-3 lg:p-4 text-right rounded-tr-xl">Amount (KES)</th>
                                                 </tr>
                                             </thead>
@@ -200,6 +236,9 @@ const Billing = () => {
                                                 {selectedInvoice.items.map((item, idx) => (
                                                     <tr key={idx}>
                                                         <td className="p-3 lg:p-4 text-xs lg:text-sm font-bold text-slate-700">{item.description}</td>
+                                                        <td className="p-3 lg:p-4 text-center">
+                                                            <span className="bg-blue-50 text-blue-600 text-[9px] font-black px-2 py-1 rounded uppercase tracking-widest">{item.item_type}</span>
+                                                        </td>
                                                         <td className="p-3 lg:p-4 text-xs lg:text-sm font-black text-slate-800 text-right">{item.amount.toFixed(2)}</td>
                                                     </tr>
                                                 ))}
@@ -220,11 +259,48 @@ const Billing = () => {
                                         <button onClick={() => setPaymentMethod('M-PESA')} className={`flex-1 py-3 lg:py-4 rounded-xl font-black text-[10px] lg:text-xs border flex items-center justify-center gap-1.5 lg:gap-2 transition-all ${paymentMethod === 'M-PESA' ? 'bg-[#10A37F] text-white border-[#10A37F] shadow-md shadow-[#10A37F]/20' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}><Smartphone size={16} className="lg:w-[18px] lg:h-[18px]" /> M-PESA</button>
                                     </div>
                                     
-                                    <button onClick={handleProcessPayment} className="w-full py-4 lg:py-5 bg-emerald-600 text-white font-black text-[10px] lg:text-sm uppercase tracking-widest rounded-xl lg:rounded-2xl shadow-lg hover:bg-emerald-700 active:scale-[0.98] transition-all flex items-center justify-center gap-2">
+                                    <button 
+                                        onClick={handleProcessPayment} 
+                                        disabled={selectedInvoice.total_amount === 0}
+                                        className="w-full py-4 lg:py-5 bg-emerald-600 text-white font-black text-[10px] lg:text-sm uppercase tracking-widest rounded-xl lg:rounded-2xl shadow-lg hover:bg-emerald-700 active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                                    >
                                         {paymentMethod === 'M-PESA' ? 'Send M-PESA Prompt' : 'Receive Cash & Close Invoice'} <ArrowRight size={16} className="lg:w-[18px] lg:h-[18px]"/>
                                     </button>
                                 </div>
                             </>
+                        )}
+
+                        {/* PAYMENT MODAL (Overlays the right pane) */}
+                        {paymentState !== 'idle' && (
+                            <div className="absolute inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center animate-in fade-in p-4">
+                                <div className="bg-white w-full max-w-[400px] rounded-[24px] lg:rounded-[32px] shadow-2xl p-6 lg:p-8 flex flex-col items-center text-center">
+                                    {paymentState === 'processing' && (
+                                        <div className="py-6 lg:py-8"><Loader2 className="animate-spin text-emerald-500 mx-auto mb-4" size={40}/><h2 className="text-lg lg:text-xl font-black">Processing Payment...</h2></div>
+                                    )}
+                                    {paymentState === 'failed' && (
+                                        <div className="py-4 lg:py-6"><XCircle className="text-red-500 mx-auto mb-3 lg:mb-4" size={40}/><h2 className="text-lg lg:text-xl font-black">Transaction Failed</h2><button onClick={() => setPaymentState('idle')} className="mt-5 lg:mt-6 w-full py-3 bg-slate-100 rounded-xl font-bold text-xs lg:text-sm hover:bg-slate-200">Return to Cashier</button></div>
+                                    )}
+                                    {paymentState === 'success' && receiptData && (
+                                        <div className="w-full">
+                                            <CheckCircle2 className="text-emerald-500 mx-auto mb-3 lg:mb-4" size={40} className="lg:w-12 lg:h-12"/>
+                                            <h2 className="text-lg lg:text-xl font-black mb-5 lg:mb-6">Payment Complete</h2>
+                                            <div className="bg-slate-50 p-4 lg:p-6 rounded-xl lg:rounded-2xl border border-slate-100 text-left mb-5 lg:mb-6 font-mono text-[10px] lg:text-xs">
+                                                <p className="font-bold border-b border-slate-200 pb-2 mb-2 text-center">MEDICARE OFFICIAL RECEIPT</p>
+                                                <p>TRX: {receiptData.transactionId}</p>
+                                                <p>Patient: {receiptData.patientName}</p>
+                                                <div className="my-3 py-3 border-y border-dashed border-slate-300">
+                                                    {receiptData.items.map((i, idx) => <div key={idx} className="flex justify-between mb-1 truncate gap-2 lg:gap-4"><span className="truncate">{i.description}</span><span>{i.amount.toFixed(2)}</span></div>)}
+                                                </div>
+                                                <p className="flex justify-between font-bold text-xs lg:text-sm"><span>TOTAL</span><span>KES {receiptData.total.toFixed(2)}</span></p>
+                                            </div>
+                                            <div className="flex gap-2 lg:gap-3">
+                                                <button onClick={() => window.print()} className="flex-1 py-2.5 lg:py-3 bg-slate-800 text-white rounded-xl font-bold text-[10px] lg:text-xs flex items-center justify-center gap-1.5 lg:gap-2 hover:bg-slate-700"><Printer size={14} className="lg:w-4 lg:h-4"/> Print</button>
+                                                <button onClick={resetTransaction} className="flex-1 py-2.5 lg:py-3 bg-emerald-600 text-white rounded-xl font-bold text-[10px] lg:text-xs hover:bg-emerald-700">Next Client</button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         )}
                     </div>
                 </div>
@@ -293,39 +369,6 @@ const Billing = () => {
                                 </tbody>
                             </table>
                         </div>
-                    </div>
-                </div>
-            )}
-
-            {/* PAYMENT MODAL */}
-            {paymentState !== 'idle' && (
-                <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center rounded-[24px] lg:rounded-[32px] animate-in fade-in p-4">
-                    <div className="bg-white w-full max-w-[400px] rounded-[24px] lg:rounded-[32px] shadow-2xl p-6 lg:p-8 flex flex-col items-center text-center">
-                        {paymentState === 'processing' && (
-                            <div className="py-6 lg:py-8"><Loader2 className="animate-spin text-emerald-500 mx-auto mb-4" size={40}/><h2 className="text-lg lg:text-xl font-black">Processing Payment...</h2></div>
-                        )}
-                        {paymentState === 'failed' && (
-                            <div className="py-4 lg:py-6"><XCircle className="text-red-500 mx-auto mb-3 lg:mb-4" size={40}/><h2 className="text-lg lg:text-xl font-black">Transaction Failed</h2><button onClick={() => setPaymentState('idle')} className="mt-5 lg:mt-6 w-full py-3 bg-slate-100 rounded-xl font-bold text-xs lg:text-sm hover:bg-slate-200">Return to Cashier</button></div>
-                        )}
-                        {paymentState === 'success' && receiptData && (
-                            <div className="w-full">
-                                <CheckCircle2 className="text-emerald-500 mx-auto mb-3 lg:mb-4" size={40} className="lg:w-12 lg:h-12"/>
-                                <h2 className="text-lg lg:text-xl font-black mb-5 lg:mb-6">Payment Complete</h2>
-                                <div className="bg-slate-50 p-4 lg:p-6 rounded-xl lg:rounded-2xl border border-slate-100 text-left mb-5 lg:mb-6 font-mono text-[10px] lg:text-xs">
-                                    <p className="font-bold border-b border-slate-200 pb-2 mb-2 text-center">MEDICARE OFFICIAL RECEIPT</p>
-                                    <p>TRX: {receiptData.transactionId}</p>
-                                    <p>Patient: {receiptData.patientName}</p>
-                                    <div className="my-3 py-3 border-y border-dashed border-slate-300">
-                                        {receiptData.items.map((i, idx) => <div key={idx} className="flex justify-between mb-1 truncate gap-2 lg:gap-4"><span className="truncate">{i.description}</span><span>{i.amount.toFixed(2)}</span></div>)}
-                                    </div>
-                                    <p className="flex justify-between font-bold text-xs lg:text-sm"><span>TOTAL</span><span>KES {receiptData.total.toFixed(2)}</span></p>
-                                </div>
-                                <div className="flex gap-2 lg:gap-3">
-                                    <button onClick={() => window.print()} className="flex-1 py-2.5 lg:py-3 bg-slate-800 text-white rounded-xl font-bold text-[10px] lg:text-xs flex items-center justify-center gap-1.5 lg:gap-2 hover:bg-slate-700"><Printer size={14} className="lg:w-4 lg:h-4"/> Print</button>
-                                    <button onClick={resetTransaction} className="flex-1 py-2.5 lg:py-3 bg-emerald-600 text-white rounded-xl font-bold text-[10px] lg:text-xs hover:bg-emerald-700">Next Client</button>
-                                </div>
-                            </div>
-                        )}
                     </div>
                 </div>
             )}

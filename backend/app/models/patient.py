@@ -17,7 +17,7 @@ class Patient(Base):
     other_names = Column(String(150), nullable=False)
     sex = Column(String(20), nullable=False)
     date_of_birth = Column(String(50), nullable=False) 
-    
+    blood_group = Column(String(5), nullable=True)
     # Identification
     id_type = Column(String(50), nullable=False)
     id_number = Column(String(50), nullable=True)

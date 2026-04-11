@@ -18,12 +18,13 @@ from app.models.patient import Patient
 from app.models.bed import Bed
 from app.models.medical_record import MedicalRecord
 from app.models.queue import PatientQueue
-from app.models.laboratory import LabTest
-from app.models.doctor import Doctor          # <-- Model verified
+from app.models.doctor import Doctor
 from app.models.appointment import Appointment
 from app.models.billing import Billing
-# Assuming your pharmacy model is named DrugInventory based on previous snippets
 from app.models.pharmacy import DrugInventory 
+# NEW MODELS FOR SEEDING
+from app.models.laboratory import LabTest, LabTestCatalog, LabTestRequiredItem
+from app.models.inventory import InventoryItem, Location, StockBatch
 # =======================================================================
 
 def seed_master():
@@ -74,13 +75,12 @@ def seed_master():
         # PHASE 2B: SEED DOCTORS (CLINICAL STAFF)
         # ==========================================
         print("🩺 Seeding Clinical Doctors Directory...")
-        # Since your Doctor model is standalone (no user_id FK), we create it with its specific fields
         clinical_doctor = Doctor(
             first_name="Sarah",
             last_name="Smith",
             specialization="General Medicine",
             phone="0712345678",
-            email="doctor@medicare.io", # Matches the login email for consistency, though unlinked
+            email="doctor@medicare.io", 
             availability_schedule="Mon-Fri, 8AM-5PM"
         )
         db.add(clinical_doctor)
@@ -107,7 +107,7 @@ def seed_master():
         db.commit()
 
         # ==========================================
-        # PHASE 4: SEED BEDS & WARDS
+        # PHASE 4A: SEED BEDS & WARDS
         # ==========================================
         print("🛏️  Initializing Hospital Infrastructure (Beds)...")
         wards = {
@@ -120,6 +120,74 @@ def seed_master():
             for i in range(1, config["count"] + 1):
                 bed = Bed(ward_name=ward_name, bed_number=f"{config['prefix']}-{str(i).zfill(2)}")
                 db.add(bed)
+        db.commit()
+        
+        # ==========================================
+        # PHASE 4B: SEED INVENTORY & LAB CATALOG
+        # ==========================================
+        print("📋 Building Master Inventory & Laboratory Catalog...")
+        
+        # 1. Add Master Inventory Items (The physical reagents/syringes)
+        inv_items = [
+            InventoryItem(item_code="C-001", name="5ml Syringe", category="Consumable", unit_price=20.0),
+            InventoryItem(item_code="C-002", name="Purple Top EDTA Tube", category="Consumable", unit_price=50.0),
+            InventoryItem(item_code="C-003", name="Yellow Top Urine Cup", category="Consumable", unit_price=30.0),
+            InventoryItem(item_code="R-001", name="Malaria Rapid Diagnostic Test (RDT) Kit", category="Reagent", unit_price=200.0),
+            InventoryItem(item_code="R-002", name="Hematology Analyzer Reagent A", category="Reagent", unit_price=5000.0)
+        ]
+        for item in inv_items:
+            db.add(item)
+        db.commit()
+
+        # 2. Add Location and Physical Stock
+        loc = Location(name="Main Lab Store", description="Primary storage for laboratory supplies")
+        db.add(loc)
+        db.commit()
+        
+        for item in inv_items:
+            batch = StockBatch(
+                item_id=item.item_id,
+                location_id=loc.location_id,
+                batch_number=f"BATCH-{random.randint(1000,9999)}",
+                quantity=random.randint(100, 500),
+                expiry_date=datetime.now() + timedelta(days=365)
+            )
+            db.add(batch)
+        db.commit()
+
+        # 3. Create Lab Test Catalog & Link to Inventory
+        catalog_entries = [
+            {"name": "Complete Blood Count (CBC)", "price": 1500.0, "req": [
+                {"id": inv_items[0].item_id, "name": "5ml Syringe", "qty": 1},
+                {"id": inv_items[1].item_id, "name": "Purple Top EDTA Tube", "qty": 1},
+                {"id": inv_items[4].item_id, "name": "Hematology Analyzer Reagent A", "qty": 0.05} # Uses 5% of a bottle
+            ]},
+            {"name": "Urinalysis", "price": 800.0, "req": [
+                {"id": inv_items[2].item_id, "name": "Yellow Top Urine Cup", "qty": 1}
+            ]},
+            {"name": "Malaria RDT", "price": 500.0, "req": [
+                {"id": inv_items[3].item_id, "name": "Malaria Rapid Diagnostic Test (RDT) Kit", "qty": 1}
+            ]},
+            {"name": "Basic Metabolic Panel (BMP)", "price": 2500.0, "req": [
+                {"id": inv_items[0].item_id, "name": "5ml Syringe", "qty": 1}
+            ]}
+        ]
+
+        inserted_catalog_items = []
+        for entry in catalog_entries:
+            cat_item = LabTestCatalog(test_name=entry["name"], base_price=entry["price"])
+            db.add(cat_item)
+            db.flush() # Get the catalog_id immediately
+            inserted_catalog_items.append(cat_item)
+            
+            # Link required items
+            for req in entry["req"]:
+                db.add(LabTestRequiredItem(
+                    catalog_id=cat_item.catalog_id,
+                    inventory_item_id=req["id"],
+                    item_name=req["name"],
+                    quantity_required=req["qty"]
+                ))
         db.commit()
 
         # ==========================================
@@ -155,7 +223,6 @@ def seed_master():
                 visit_date = datetime.now(timezone.utc) - timedelta(days=random.randint(5, 365))
                 record = MedicalRecord(
                     patient_id=patient.patient_id,
-                    # UPDATED: Uses the ID generated by the Doctor table, not the User table
                     doctor_id=clinical_doctor.doctor_id, 
                     chief_complaint=scenario["chief_complaint"],
                     diagnosis=scenario["diagnosis"],
@@ -174,17 +241,19 @@ def seed_master():
         # PHASE 7: SEED LAB TESTS
         # ==========================================
         print("🔬 Generating Laboratory Test Results...")
-        test_types = ["Complete Blood Count (CBC)", "Basic Metabolic Panel (BMP)", "Lipid Panel", "Urinalysis", "Malaria RDT"]
         
         for _ in range(15):
-            test_name = random.choice(test_types)
+            # Select a random test from the catalog we just built!
+            catalog_choice = random.choice(inserted_catalog_items)
             is_completed = random.random() > 0.3 
             requested = datetime.now(timezone.utc) - timedelta(days=random.randint(0, 14), hours=random.randint(1, 23))
 
             lab_test = LabTest(
                 patient_id=random.choice(inserted_patients).patient_id,
-                doctor_id=clinical_doctor.doctor_id, # LabTest uses doctors.doctor_id
-                test_name=test_name,
+                doctor_id=clinical_doctor.doctor_id, 
+                catalog_id=catalog_choice.catalog_id,
+                test_name=catalog_choice.test_name,
+                billed_price=catalog_choice.base_price,
                 requested_at=requested
             )
             

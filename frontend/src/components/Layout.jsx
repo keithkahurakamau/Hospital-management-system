@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import api from '../api/axiosConfig';
 import { 
   LayoutDashboard, Users, UserRound, FileClock, ShieldCheck, 
-  CreditCard, Pill, FlaskConical, LogOut, Activity, Search, CalendarDays, PackageSearch, BedDouble, Menu, X
+  CreditCard, Pill, FlaskConical, LogOut, Activity, Search, CalendarDays, PackageSearch, BedDouble, Menu, X, DollarSign
 } from 'lucide-react';
 
 const Layout = ({ children, setIsAuthenticated }) => {
@@ -69,6 +69,7 @@ const Layout = ({ children, setIsAuthenticated }) => {
     { path: '/records', label: 'Clinical Desk', icon: FileClock, perm: 'consult_patients' },
     { path: '/lab', label: 'Laboratory', icon: FlaskConical, perm: 'manage_labs' },
     { path: '/users', label: 'Access Control', icon: ShieldCheck, perm: 'manage_users' },
+    { path: '/admin/pricing', label: 'Service Pricing', icon: DollarSign, perm: 'manage_users' },
   ];
 
   const filteredMenu = menuItems.filter(item => 

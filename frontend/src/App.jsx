@@ -15,6 +15,7 @@ import Reports from './pages/Reports';
 import Appointments from './pages/Appointments';
 import UserManagement from './pages/UserManagement'; 
 import Inventory from './pages/Inventory';
+import AdminPricing from './pages/AdminPricing';
 
 function App() {
     // CHECKING SESSION STORAGE INSTEAD OF LOCAL
@@ -59,7 +60,7 @@ function App() {
                                     <Route path="/inventory" element={<Inventory />} />
                                     <Route path="/users" element={<UserManagement />} />
                                     <Route path="/reports" element={<Reports />} />
-                                    
+                                    <Route path="/admin/pricing" element={<AdminPricing />} />
                                     {/* Catch-all redirect to Dashboard */}
                                     <Route path="*" element={<Navigate to="/" replace />} />
                                 </Routes>

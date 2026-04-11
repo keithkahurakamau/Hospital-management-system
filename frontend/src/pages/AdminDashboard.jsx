@@ -225,8 +225,8 @@ const AdminDashboard = () => {
                                             </td>
                                             <td className="py-3 lg:py-4 text-[10px] lg:text-xs font-black text-slate-800 uppercase">{tx.patient}</td>
                                             <td className="py-3 lg:py-4">
-                                                <span className={`text-[8px] lg:text-[9px] font-black px-2 lg:px-2.5 py-1 rounded bg-slate-100 text-slate-600 uppercase tracking-widest ${tx.method.includes('M-PESA') ? 'bg-[#10A37F]/10 text-[#10A37F]' : ''}`}>
-                                                    {tx.method}
+                                                <span className={`text-[8px] lg:text-[9px] font-black px-2 lg:px-2.5 py-1 rounded bg-slate-100 text-slate-600 uppercase tracking-widest ${(tx.method || 'CASH').includes('M-PESA') ? 'bg-[#10A37F]/10 text-[#10A37F]' : ''}`}>
+                                                    {tx.method || 'CASH'}
                                                 </span>
                                             </td>
                                             <td className="py-3 lg:py-4 pr-2 lg:pr-4 text-xs lg:text-sm font-black text-slate-800 text-right">

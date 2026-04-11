@@ -3,7 +3,7 @@ import api from '../api/axiosConfig';
 import { 
     Activity, ClipboardList, Thermometer, Weight, 
     User, Clock, CheckCircle2, TestTube2, Pill, 
-    AlertCircle, Loader2, Stethoscope, Syringe, Search
+    AlertCircle, Loader2, Stethoscope, Syringe, Search, FlaskConical
 } from 'lucide-react';
 
 // --- ICD-10 DATASET (Representative Sample) ---
@@ -46,10 +46,14 @@ const VitalsInput = ({ label, name, icon: Icon, unit, placeholder, value, onChan
 
 const ClinicalDesk = () => {
     const [queue, setQueue] = useState([]);
+    const [catalog, setCatalog] = useState([]); // Master list of lab tests
     const [activePatient, setActivePatient] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
     const [icdSearch, setIcdSearch] = useState('');
     
+    // NEW: Lab Test Selection
+    const [selectedTestId, setSelectedTestId] = useState('');
+
     const [form, setForm] = useState({
         systolic_bp: '', diastolic_bp: '', temperature: '', weight_kg: '',
         chief_complaint: '', notes: '', diagnosis: '', prescription_notes: ''
@@ -65,9 +69,17 @@ const ClinicalDesk = () => {
 
     useEffect(() => {
         fetchQueue();
+        fetchCatalog(); // Fetch Lab Catalog on mount
         const interval = setInterval(fetchQueue, 10000); // 10s polling
         return () => clearInterval(interval);
     }, []);
+
+    const fetchCatalog = async () => {
+        try {
+            const res = await api.get('/admin/lab-catalog');
+            setCatalog(res.data.filter(test => test.is_active) || []);
+        } catch (err) { console.error("Catalog fetch error", err); }
+    };
 
     const fetchQueue = async () => {
         try {
@@ -89,6 +101,7 @@ const ClinicalDesk = () => {
             setActivePatient({ ...patient, status: 'In Progress' });
             
             setIcdSearch('');
+            setSelectedTestId(''); // Reset lab selection
             setForm({ 
                 systolic_bp: '', diastolic_bp: '', temperature: '', weight_kg: '',
                 chief_complaint: '', notes: '', diagnosis: '', prescription_notes: '' 
@@ -104,6 +117,12 @@ const ClinicalDesk = () => {
 
     const handleFinalize = async (destination) => {
         if (!form.chief_complaint) return alert("Please enter a Chief Complaint.");
+        
+        // VALIDATION: Require test selection if sending to Lab
+        if (destination === 'Laboratory' && !selectedTestId) {
+            return alert("Please select a Lab Test from the catalog before sending the patient to the Laboratory.");
+        }
+
         setIsLoading(true);
         
         try {
@@ -120,17 +139,35 @@ const ClinicalDesk = () => {
                 weight_kg: parseFloat(form.weight_kg) || null
             });
 
-            // 2. Route Patient (if not discharging)
+            // 2. Order Lab Test (If applicable)
+            if (destination === 'Laboratory' && selectedTestId) {
+                await api.post('/lab/request', {
+                    patient_id: activePatient.patient_id,
+                    doctor_id: 1, // Default prototype ID
+                    catalog_id: parseInt(selectedTestId)
+                });
+            }
+
+            // 3. Route Patient (if not discharging)
             if (destination !== 'Complete') {
+                let routingNotes = `Referral: ${form.diagnosis}`;
+                if (destination === 'Pharmacy') routingNotes = form.prescription_notes;
+                
+                // Add context for the Lab Tech
+                if (destination === 'Laboratory') {
+                    const testName = catalog.find(t => t.catalog_id === parseInt(selectedTestId))?.test_name;
+                    routingNotes = `Requested: ${testName}. Notes: ${form.notes}`;
+                }
+
                 await api.post('/queue', { 
                     patient_id: activePatient.patient_id, 
                     department: destination, 
                     acuity_level: activePatient.acuity_level, 
-                    notes: destination === 'Pharmacy' ? form.prescription_notes : `Referral: ${form.diagnosis}` 
+                    notes: routingNotes 
                 });
             }
 
-            // 3. Clear from Doctor's Desk
+            // 4. Clear from Doctor's Desk
             await api.put(`/queue/${activePatient.queue_id}/status`, { status: 'Completed' });
             
             alert(`Patient ${destination === 'Complete' ? 'Discharged' : `sent to ${destination}`}.`);
@@ -276,13 +313,35 @@ const ClinicalDesk = () => {
 
                                 <div className="space-y-2 lg:space-y-3">
                                     <label className="text-[10px] lg:text-[11px] font-black text-slate-900 uppercase tracking-widest ml-1 flex items-center gap-1.5 lg:gap-2"><ClipboardList size={12} className="text-slate-400 lg:w-3.5 lg:h-3.5"/> Examination Notes</label>
-                                    <textarea placeholder="Physical exam results, systemic review..." className="w-full p-5 lg:p-8 bg-white border border-slate-200 rounded-[20px] lg:rounded-[32px] text-xs lg:text-sm min-h-[140px] lg:min-h-[180px] outline-none focus:border-blue-500 shadow-sm leading-relaxed" 
+                                    <textarea placeholder="Physical exam results, systemic review..." className="w-full p-5 lg:p-8 bg-white border border-slate-200 rounded-[20px] lg:rounded-[32px] text-xs lg:text-sm min-h-[100px] lg:min-h-[140px] outline-none focus:border-blue-500 shadow-sm leading-relaxed" 
                                         value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} />
+                                </div>
+
+                                {/* NEW: DIAGNOSTICS / LAB ORDERS */}
+                                <div className="bg-purple-50/50 p-5 lg:p-6 rounded-[20px] lg:rounded-[24px] border border-purple-100">
+                                    <h4 className="text-[10px] lg:text-[11px] font-black text-purple-900 uppercase tracking-widest flex items-center gap-1.5 lg:gap-2 mb-4">
+                                        <FlaskConical size={16} className="text-purple-500"/> Order Diagnostics
+                                    </h4>
+                                    <div>
+                                        <label className="block text-[9px] lg:text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-1">Select Lab Test from Catalog</label>
+                                        <select
+                                            value={selectedTestId}
+                                            onChange={(e) => setSelectedTestId(e.target.value)}
+                                            className="w-full p-3 lg:p-4 bg-white border border-slate-200 rounded-xl lg:rounded-2xl text-xs lg:text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all shadow-sm"
+                                        >
+                                            <option value="">-- Choose a specific test to order --</option>
+                                            {catalog.map(test => (
+                                                <option key={test.catalog_id} value={test.catalog_id}>
+                                                    {test.test_name} (KSH {(test.base_price || 0).toFixed(2)})
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
                                 </div>
 
                                 <div className="bg-slate-900 p-5 lg:p-8 rounded-[24px] lg:rounded-[40px] shadow-2xl border border-slate-800">
                                     <label className="text-[9px] lg:text-[11px] font-black text-blue-400 uppercase tracking-[0.3em] mb-4 lg:mb-6 flex items-center gap-1.5 lg:gap-2"><Syringe size={14} className="text-blue-400 lg:w-4 lg:h-4"/> Clinical Orders & Rx</label>
-                                    <textarea placeholder="Medication, Lab Panels, Dosage..." className="w-full p-4 lg:p-6 bg-slate-800/50 border border-slate-700 rounded-xl lg:rounded-2xl text-xs lg:text-sm min-h-[100px] lg:min-h-[120px] outline-none focus:border-blue-500 transition-all text-white font-mono leading-relaxed" 
+                                    <textarea placeholder="Medication, Dosage..." className="w-full p-4 lg:p-6 bg-slate-800/50 border border-slate-700 rounded-xl lg:rounded-2xl text-xs lg:text-sm min-h-[100px] lg:min-h-[120px] outline-none focus:border-blue-500 transition-all text-white font-mono leading-relaxed" 
                                         value={form.prescription_notes} onChange={e => setForm({...form, prescription_notes: e.target.value})} />
                                 </div>
                             </div>
