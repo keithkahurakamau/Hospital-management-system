@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import api from '../api/axiosConfig';
 import { 
     Wallet, TrendingUp, Receipt, Activity, Download, Calendar, 
-    CreditCard, User, Banknote, Smartphone, CheckCircle2, 
-    XCircle, Loader2, ArrowRight, FileText, Printer, Calculator, ChevronRight
+    User, Banknote, Smartphone, CheckCircle2, XCircle, Loader2, 
+    ArrowRight, FileText, Printer, Calculator, ChevronRight, Phone
 } from 'lucide-react';
 
 const Billing = () => {
@@ -19,10 +19,13 @@ const Billing = () => {
 
     // --- CASHIER POS STATE ---
     const [pendingPatients, setPendingPatients] = useState([]);
-    const [selectedInvoice, setSelectedInvoice] = useState(null); // Will hold the unbilled items
+    const [selectedInvoice, setSelectedInvoice] = useState(null); 
     const [paymentMethod, setPaymentMethod] = useState('Cash');
     const [paymentState, setPaymentState] = useState('idle'); 
     const [receiptData, setReceiptData] = useState(null);
+    
+    // --- NEW: M-PESA PHONE NUMBER STATE ---
+    const [phoneNumber, setPhoneNumber] = useState('');
 
     useEffect(() => {
         fetchData();
@@ -45,11 +48,10 @@ const Billing = () => {
 
     const fetchData = async () => {
         try {
-            // NOTE: We will need to build the /overview and /transactions backend routes next to populate the ledger!
             const [overviewRes, txRes, pendingRes] = await Promise.all([
-                api.get('/billing/overview').catch(() => ({ data: overview })), // Mock fallback if endpoint not built yet
-                api.get('/billing/transactions').catch(() => ({ data: [] })), // Mock fallback
-                api.get('/billing/queue') // <-- NEW ENDPOINT
+                api.get('/billing/overview').catch(() => ({ data: overview })), 
+                api.get('/billing/transactions').catch(() => ({ data: [] })), 
+                api.get('/billing/queue') 
             ]);
             setOverview(overviewRes.data);
             setTransactions(txRes.data);
@@ -61,7 +63,6 @@ const Billing = () => {
         }
     };
 
-    // NEW: Fetch exact line items when a patient is clicked
     const handleSelectPatient = async (patient) => {
         try {
             const res = await api.get(`/billing/unbilled/${patient.patient_id}`);
@@ -72,6 +73,8 @@ const Billing = () => {
                 items: res.data.items,
                 total_amount: res.data.total_due
             });
+            // Clear any previously entered phone number when a new patient is selected
+            setPhoneNumber('');
         } catch (err) {
             alert("Failed to pull billing details.");
         }
@@ -79,18 +82,31 @@ const Billing = () => {
 
     const handleProcessPayment = async () => {
         if (!selectedInvoice || selectedInvoice.items.length === 0) return alert("No items to bill.");
+        
+        // Validation for M-Pesa
+        if (paymentMethod === 'M-PESA' && (!phoneNumber || phoneNumber.length < 9)) {
+            return alert("Please enter a valid Safaricom phone number.");
+        }
+
         setPaymentState('processing');
 
         try {
-            // Simulate M-Pesa delay for UI effect
-            if (paymentMethod === 'M-PESA') await new Promise(resolve => setTimeout(resolve, 3000));
-            
-            // NEW ENDPOINT
-            const res = await api.post('/billing/process-payment', { 
-                patient_id: selectedInvoice.patient_id,
-                items: selectedInvoice.items,
-                payment_method: paymentMethod 
-            });
+            let res;
+            if (paymentMethod === 'M-PESA') {
+                // Trigger Daraja STK Push Endpoint
+                res = await api.post('/billing/process-mpesa', { 
+                    patient_id: selectedInvoice.patient_id,
+                    phone_number: phoneNumber,
+                    items: selectedInvoice.items
+                });
+            } else {
+                // Trigger Standard Cash Endpoint
+                res = await api.post('/billing/process-payment', { 
+                    patient_id: selectedInvoice.patient_id,
+                    items: selectedInvoice.items,
+                    payment_method: paymentMethod 
+                });
+            }
             
             setReceiptData({
                 transactionId: `INV-${res.data.invoice_id.toString().padStart(6, '0')}`,
@@ -98,12 +114,15 @@ const Billing = () => {
                 method: paymentMethod,
                 items: selectedInvoice.items,
                 total: selectedInvoice.total_amount,
-                patientName: selectedInvoice.patient_name
+                patientName: selectedInvoice.patient_name,
+                message: paymentMethod === 'M-PESA' ? "STK Push Sent! Awaiting Patient PIN." : "Payment Complete"
             });
             
             setPaymentState('success');
             fetchData(); // Refresh queue and ledger
         } catch (err) {
+            console.error(err);
+            alert(err.response?.data?.detail || "Transaction failed");
             setPaymentState('failed');
         }
     };
@@ -112,6 +131,7 @@ const Billing = () => {
         setSelectedInvoice(null);
         setPaymentState('idle');
         setReceiptData(null);
+        setPhoneNumber('');
     };
 
     // Reusable Responsive Metric Card
@@ -258,34 +278,71 @@ const Billing = () => {
                                         <button onClick={() => setPaymentMethod('Cash')} className={`flex-1 py-3 lg:py-4 rounded-xl font-black text-[10px] lg:text-xs border flex items-center justify-center gap-1.5 lg:gap-2 transition-all ${paymentMethod === 'Cash' ? 'bg-slate-800 text-white border-slate-800 shadow-md' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}><Banknote size={16} className="lg:w-[18px] lg:h-[18px]" /> CASH</button>
                                         <button onClick={() => setPaymentMethod('M-PESA')} className={`flex-1 py-3 lg:py-4 rounded-xl font-black text-[10px] lg:text-xs border flex items-center justify-center gap-1.5 lg:gap-2 transition-all ${paymentMethod === 'M-PESA' ? 'bg-[#10A37F] text-white border-[#10A37F] shadow-md shadow-[#10A37F]/20' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}><Smartphone size={16} className="lg:w-[18px] lg:h-[18px]" /> M-PESA</button>
                                     </div>
+
+                                    {/* --- HIGH-END DYNAMIC M-PESA INPUT --- */}
+                                    {paymentMethod === 'M-PESA' && (
+                                        <div className="mb-6 animate-in slide-in-from-top-2 duration-300">
+                                            <label className="text-[10px] lg:text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">
+                                                Patient Phone Number
+                                            </label>
+                                            <div className="relative group flex shadow-sm rounded-xl lg:rounded-2xl overflow-hidden border border-slate-200 focus-within:border-[#10A37F] focus-within:ring-4 focus-within:ring-[#10A37F]/10 transition-all">
+                                                <div className="bg-slate-100 px-4 py-3.5 lg:py-4 flex items-center justify-center border-r border-slate-200 text-slate-500 font-bold text-xs lg:text-sm">
+                                                    +254
+                                                </div>
+                                                <div className="relative flex-1">
+                                                    <input 
+                                                        type="tel" 
+                                                        placeholder="712 345 678"
+                                                        value={phoneNumber}
+                                                        onChange={(e) => setPhoneNumber(e.target.value)}
+                                                        className="w-full pl-4 pr-12 py-3.5 lg:py-4 bg-slate-50 outline-none text-sm lg:text-base font-black text-slate-800 tracking-wider transition-all"
+                                                    />
+                                                    <Phone className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-[#10A37F] transition-colors" size={18} />
+                                                </div>
+                                            </div>
+                                            <p className="text-[9px] lg:text-[10px] font-bold text-slate-400 mt-2 ml-1">
+                                                An STK push prompt will be sent instantly to this number.
+                                            </p>
+                                        </div>
+                                    )}
                                     
                                     <button 
                                         onClick={handleProcessPayment} 
-                                        disabled={selectedInvoice.total_amount === 0}
-                                        className="w-full py-4 lg:py-5 bg-emerald-600 text-white font-black text-[10px] lg:text-sm uppercase tracking-widest rounded-xl lg:rounded-2xl shadow-lg hover:bg-emerald-700 active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                                        disabled={selectedInvoice.total_amount === 0 || paymentState === 'processing'}
+                                        className={`w-full py-4 lg:py-5 text-white font-black text-[10px] lg:text-sm uppercase tracking-widest rounded-xl lg:rounded-2xl shadow-lg active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${paymentMethod === 'M-PESA' ? 'bg-[#10A37F] hover:bg-[#0d8a6b]' : 'bg-emerald-600 hover:bg-emerald-700'}`}
                                     >
-                                        {paymentMethod === 'M-PESA' ? 'Send M-PESA Prompt' : 'Receive Cash & Close Invoice'} <ArrowRight size={16} className="lg:w-[18px] lg:h-[18px]"/>
+                                        {paymentState === 'processing' ? <Loader2 className="animate-spin" size={16} /> : null}
+                                        {paymentState === 'processing' 
+                                            ? 'Processing...' 
+                                            : paymentMethod === 'M-PESA' 
+                                                ? 'Send M-PESA Prompt' 
+                                                : 'Receive Cash & Close Invoice'} 
+                                        {paymentState !== 'processing' && <ArrowRight size={16} className="lg:w-[18px] lg:h-[18px]"/>}
                                     </button>
                                 </div>
                             </>
                         )}
 
                         {/* PAYMENT MODAL (Overlays the right pane) */}
-                        {paymentState !== 'idle' && (
+                        {paymentState !== 'idle' && paymentState !== 'processing' && (
                             <div className="absolute inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center animate-in fade-in p-4">
                                 <div className="bg-white w-full max-w-[400px] rounded-[24px] lg:rounded-[32px] shadow-2xl p-6 lg:p-8 flex flex-col items-center text-center">
-                                    {paymentState === 'processing' && (
-                                        <div className="py-6 lg:py-8"><Loader2 className="animate-spin text-emerald-500 mx-auto mb-4" size={40}/><h2 className="text-lg lg:text-xl font-black">Processing Payment...</h2></div>
-                                    )}
                                     {paymentState === 'failed' && (
-                                        <div className="py-4 lg:py-6"><XCircle className="text-red-500 mx-auto mb-3 lg:mb-4" size={40}/><h2 className="text-lg lg:text-xl font-black">Transaction Failed</h2><button onClick={() => setPaymentState('idle')} className="mt-5 lg:mt-6 w-full py-3 bg-slate-100 rounded-xl font-bold text-xs lg:text-sm hover:bg-slate-200">Return to Cashier</button></div>
+                                        <div className="py-4 lg:py-6">
+                                            <XCircle className="text-red-500 mx-auto mb-3 lg:mb-4" size={40}/>
+                                            <h2 className="text-lg lg:text-xl font-black">Transaction Failed</h2>
+                                            <button onClick={() => setPaymentState('idle')} className="mt-5 lg:mt-6 w-full py-3 bg-slate-100 rounded-xl font-bold text-xs lg:text-sm hover:bg-slate-200">Return to Cashier</button>
+                                        </div>
                                     )}
                                     {paymentState === 'success' && receiptData && (
                                         <div className="w-full">
-                                            <CheckCircle2 className="text-emerald-500 mx-auto mb-3 lg:mb-4" size={40} className="lg:w-12 lg:h-12"/>
-                                            <h2 className="text-lg lg:text-xl font-black mb-5 lg:mb-6">Payment Complete</h2>
+                                            <CheckCircle2 className="text-emerald-500 mx-auto mb-3 lg:mb-4 lg:w-12 lg:h-12"/>
+                                            <h2 className="text-lg lg:text-xl font-black mb-2">{receiptData.message}</h2>
+                                            {paymentMethod === 'M-PESA' && <p className="text-xs text-slate-500 mb-6 font-medium">Please wait for the patient to enter their PIN. The ledger will update automatically.</p>}
+                                            {paymentMethod === 'Cash' && <p className="text-xs text-slate-500 mb-6 font-medium">Transaction settled and recorded to ledger.</p>}
+                                            
                                             <div className="bg-slate-50 p-4 lg:p-6 rounded-xl lg:rounded-2xl border border-slate-100 text-left mb-5 lg:mb-6 font-mono text-[10px] lg:text-xs">
-                                                <p className="font-bold border-b border-slate-200 pb-2 mb-2 text-center">MEDICARE OFFICIAL RECEIPT</p>
+                                                <p className="font-bold border-b border-slate-200 pb-2 mb-2 text-center">MEDICARE INVOICE REF</p>
                                                 <p>TRX: {receiptData.transactionId}</p>
                                                 <p>Patient: {receiptData.patientName}</p>
                                                 <div className="my-3 py-3 border-y border-dashed border-slate-300">
@@ -327,7 +384,6 @@ const Billing = () => {
                             <h2 className="text-base lg:text-lg font-black text-slate-800 flex items-center gap-2"><Calendar size={18} className="lg:w-5 lg:h-5 text-slate-500"/> Settled Invoices</h2>
                         </div>
                         
-                        {/* Table wrapper handles horizontal overflow on small screens */}
                         <div className="flex-1 overflow-x-auto w-full custom-scrollbar h-[400px] overflow-y-auto">
                             <table className="w-full min-w-[700px] text-left border-collapse">
                                 <thead className="bg-white sticky top-0 z-10 shadow-sm">
@@ -336,7 +392,7 @@ const Billing = () => {
                                         <th className="p-4 lg:p-5">Date Settled</th>
                                         <th className="p-4 lg:p-5">Client Profile</th>
                                         <th className="p-4 lg:p-5">Summary</th>
-                                        <th className="p-4 lg:p-5">Payment Method</th>
+                                        <th className="p-4 lg:p-5">Status</th>
                                         <th className="p-4 lg:p-5 text-right pr-6 lg:pr-8">Total (KES)</th>
                                     </tr>
                                 </thead>
