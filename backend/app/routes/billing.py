@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+import logging
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, desc
 from pydantic import BaseModel
@@ -9,6 +10,9 @@ from app.config.database import get_db
 from app.models.billing import Billing, InvoiceItem
 from app.models.laboratory import LabTest
 from app.models.patient import Patient
+
+# --- IMPORT YOUR NEW PAYMENT SERVICE ---
+from app.services.payment_service import initiate_stk_push
 
 router = APIRouter(prefix="/api/billing", tags=["Billing & Cashier"])
 
@@ -23,6 +27,11 @@ class PaymentRequest(BaseModel):
     patient_id: int
     items: List[BillableItem]
     payment_method: str = "Cash" # Cash, M-Pesa, Card, Insurance
+
+class MPesaRequest(BaseModel):
+    patient_id: int
+    phone_number: str
+    items: List[BillableItem]
 
 
 # ==========================================
@@ -81,7 +90,7 @@ def get_unbilled_items(patient_id: int, db: Session = Depends(get_db)):
 
 @router.post("/process-payment", status_code=status.HTTP_201_CREATED)
 def process_payment(req: PaymentRequest, db: Session = Depends(get_db)):
-    """Generates the official invoice and marks the items as paid."""
+    """Generates the official invoice and marks the items as paid (CASH/INSURANCE)."""
     if not req.items:
         raise HTTPException(status_code=400, detail="Cannot process an empty invoice.")
 
@@ -120,18 +129,103 @@ def process_payment(req: PaymentRequest, db: Session = Depends(get_db)):
 
 
 # ==========================================
-# 2. FINANCIAL LEDGER & ANALYTICS ENDPOINTS
+# 2. M-PESA INTEGRATION ENDPOINTS
+# ==========================================
+
+@router.post("/process-mpesa", status_code=status.HTTP_200_OK)
+def process_mpesa_payment(req: MPesaRequest, db: Session = Depends(get_db)):
+    """Creates a 'Pending' invoice and triggers the STK Push to the patient's phone."""
+    if not req.items:
+        raise HTTPException(status_code=400, detail="Cannot process an empty invoice.")
+
+    total_amount = sum(item.amount for item in req.items)
+    
+    # 1. Create Invoice as "Pending M-Pesa"
+    new_invoice = Billing(
+        patient_id=req.patient_id,
+        total_amount=total_amount,
+        status="Pending M-Pesa" 
+    )
+    db.add(new_invoice)
+    db.flush()
+    
+    for item in req.items:
+        invoice_item = InvoiceItem(
+            invoice_id=new_invoice.invoice_id,
+            description=item.description,
+            amount=item.amount,
+            item_type=item.item_type,
+            reference_id=item.reference_id,
+            tax_type="E"
+        )
+        db.add(invoice_item)
+    
+    db.commit()
+
+    # 2. Trigger the STK Push
+    invoice_ref = f"INV-{new_invoice.invoice_id}"
+    try:
+        daraja_response = initiate_stk_push(
+            phone_number=req.phone_number,
+            amount=total_amount,
+            reference=invoice_ref
+        )
+        # Note: You can store daraja_response["CheckoutRequestID"] in the DB here to track it
+    except Exception as e:
+        logging.error(f"Daraja Error: {str(e)}")
+        # If STK Push fails, we might want to roll back the invoice, or leave it pending for retry
+        raise HTTPException(status_code=500, detail="Failed to connect to Safaricom Daraja API.")
+
+    return {
+        "message": "STK Push sent to patient's phone.",
+        "invoice_id": new_invoice.invoice_id,
+        "checkout_request_id": daraja_response.get("CheckoutRequestID")
+    }
+
+@router.post("/mpesa-callback")
+async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
+    """Safaricom will POST to this URL when the patient enters their PIN (or cancels)."""
+    callback_data = await request.json()
+    stk_callback = callback_data.get("Body", {}).get("stkCallback", {})
+    
+    result_code = stk_callback.get("ResultCode")
+    checkout_request_id = stk_callback.get("CheckoutRequestID")
+    
+    if result_code == 0:
+        # Payment was successful!
+        meta_items = stk_callback.get("CallbackMetadata", {}).get("Item", [])
+        receipt_no = next((item["Value"] for item in meta_items if item["Name"] == "MpesaReceiptNumber"), "UNKNOWN")
+        
+        logging.info(f"✅ M-PESA PAYMENT SUCCESS! Receipt: {receipt_no}")
+        
+        # TODO: Update the Billing status from "Pending M-Pesa" to "Paid"
+        # db.query(Billing).filter(Billing.checkout_request_id == checkout_request_id).update({
+        #     "status": "Paid", 
+        #     "transaction_ref": receipt_no
+        # })
+        # db.commit()
+    else:
+        # Payment Failed (User cancelled, wrong PIN, insufficient funds)
+        fail_reason = stk_callback.get("ResultDesc", "Unknown error")
+        logging.warning(f"❌ M-PESA PAYMENT FAILED: {fail_reason}")
+        
+        # TODO: Update the Billing status to "Failed" or "Cancelled"
+        
+    # Safaricom requires this exact JSON response to know we received the callback
+    return {"ResultCode": 0, "ResultDesc": "Accepted"}
+
+
+# ==========================================
+# 3. FINANCIAL LEDGER & ANALYTICS ENDPOINTS
 # ==========================================
 
 @router.get("/overview")
 def get_billing_overview(db: Session = Depends(get_db)):
     """Calculates live metrics for the top Dashboard cards."""
     
-    # Get the exact start of today and start of the month for accurate filtering
     today_start = datetime.combine(datetime.today(), time.min)
     month_start = today_start.replace(day=1)
 
-    # 1. Today's Revenue & Transaction Count
     today_stats = db.query(
         func.sum(Billing.total_amount).label("revenue"),
         func.count(Billing.invoice_id).label("count")
@@ -143,7 +237,6 @@ def get_billing_overview(db: Session = Depends(get_db)):
     today_revenue = float(today_stats.revenue or 0.0)
     transactions_today = today_stats.count or 0
 
-    # 2. Monthly Revenue
     monthly_stats = db.query(func.sum(Billing.total_amount).label("revenue")).filter(
         Billing.status == "Paid",
         Billing.billing_date >= month_start
@@ -151,7 +244,6 @@ def get_billing_overview(db: Session = Depends(get_db)):
     
     monthly_revenue = float(monthly_stats.revenue or 0.0)
 
-    # 3. Average Order Value (All-Time)
     avg_stats = db.query(func.avg(Billing.total_amount).label("avg")).filter(
         Billing.status == "Paid"
     ).first()
@@ -169,7 +261,6 @@ def get_billing_overview(db: Session = Depends(get_db)):
 def get_recent_transactions(db: Session = Depends(get_db)):
     """Fetches the 50 most recent settled invoices for the data table."""
     
-    # Joinedload ensures we grab the related patient and line items in a single query
     invoices = db.query(Billing).options(
         joinedload(Billing.patient),
         joinedload(Billing.items)

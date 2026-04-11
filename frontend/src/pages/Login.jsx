@@ -14,9 +14,11 @@ const Login = ({ onLoginSuccess }) => {
 
         try {
             const res = await api.post('/auth/login', formData);
-            const { access_token, role, full_name, user_id } = res.data;
+            
+            // 🚨 SECURITY UPDATE: The token is NOT here anymore. It was sent as an HttpOnly cookie!
+            // We only need to store the UI profile data.
+            const { role, full_name, user_id } = res.data;
 
-            sessionStorage.setItem('token', access_token);
             sessionStorage.setItem('userRole', role);
             sessionStorage.setItem('userName', full_name);
             sessionStorage.setItem('userId', user_id); 
@@ -32,18 +34,19 @@ const Login = ({ onLoginSuccess }) => {
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 sm:p-6 font-sans">
+        // Beautiful modern radial gradient background
+        <div className="min-h-screen bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-50 via-slate-50 to-slate-100 flex items-center justify-center p-4 sm:p-6 font-sans">
             <div className="w-full max-w-[420px] animate-in fade-in zoom-in duration-500">
                 
                 <div className="flex flex-col items-center mb-8 sm:mb-10">
-                    <div className="w-14 h-14 sm:w-16 sm:h-16 bg-slate-800 rounded-[20px] sm:rounded-[22px] flex items-center justify-center text-white shadow-2xl shadow-slate-200 mb-4 transition-transform hover:scale-110">
+                    <div className="w-14 h-14 sm:w-16 sm:h-16 bg-slate-800 rounded-[20px] sm:rounded-[22px] flex items-center justify-center text-white shadow-xl shadow-slate-300 mb-4 transition-transform hover:scale-110">
                         <Activity size={28} className="sm:w-8 sm:h-8" />
                     </div>
                     <h1 className="text-2xl sm:text-3xl font-black text-slate-800 tracking-tight">Medicare ERP</h1>
-                    <p className="text-slate-400 font-bold text-[10px] sm:text-xs uppercase tracking-[0.2em] mt-1.5 sm:mt-2">Clinical Management System</p>
+                    <p className="text-slate-500 font-bold text-[10px] sm:text-xs uppercase tracking-[0.2em] mt-1.5 sm:mt-2">Clinical Management System</p>
                 </div>
 
-                <div className="bg-white p-6 sm:p-10 rounded-[32px] sm:rounded-[40px] border border-slate-200 shadow-xl shadow-slate-200/50">
+                <div className="bg-white p-6 sm:p-10 rounded-[32px] sm:rounded-[40px] border border-white/50 shadow-2xl shadow-slate-200/60 backdrop-blur-xl">
                     <h2 className="text-lg sm:text-xl font-black text-slate-800 mb-6 sm:mb-8">Secure Login</h2>
 
                     {error && (
@@ -57,12 +60,12 @@ const Login = ({ onLoginSuccess }) => {
                         <div className="space-y-1.5 sm:space-y-2">
                             <label className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email Address</label>
                             <div className="relative group">
-                                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-slate-800 transition-colors" size={16} className="sm:w-[18px] sm:h-[18px]" />
+                                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-slate-800 transition-colors sm:w-[18px] sm:h-[18px]" size={16} />
                                 <input 
                                     type="email" 
                                     required
                                     placeholder="desk@medicare.io"
-                                    className="w-full pl-11 sm:pl-12 pr-4 py-3.5 sm:py-4 bg-slate-50 border border-slate-200 rounded-xl sm:rounded-2xl outline-none text-xs sm:text-sm font-medium focus:border-slate-800 focus:bg-white transition-all"
+                                    className="w-full pl-11 sm:pl-12 pr-4 py-3.5 sm:py-4 bg-slate-50 border border-slate-200 rounded-xl sm:rounded-2xl outline-none text-xs sm:text-sm font-medium focus:border-slate-800 focus:bg-white focus:ring-4 focus:ring-slate-100 transition-all"
                                     value={formData.email}
                                     onChange={(e) => setFormData({...formData, email: e.target.value})}
                                 />
@@ -72,12 +75,12 @@ const Login = ({ onLoginSuccess }) => {
                         <div className="space-y-1.5 sm:space-y-2">
                             <label className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Password</label>
                             <div className="relative group">
-                                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-slate-800 transition-colors" size={16} className="sm:w-[18px] sm:h-[18px]" />
+                                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-slate-800 transition-colors sm:w-[18px] sm:h-[18px]" size={16} />
                                 <input 
                                     type="password" 
                                     required
                                     placeholder="••••••••"
-                                    className="w-full pl-11 sm:pl-12 pr-4 py-3.5 sm:py-4 bg-slate-50 border border-slate-200 rounded-xl sm:rounded-2xl outline-none text-xs sm:text-sm font-medium focus:border-slate-800 focus:bg-white transition-all"
+                                    className="w-full pl-11 sm:pl-12 pr-4 py-3.5 sm:py-4 bg-slate-50 border border-slate-200 rounded-xl sm:rounded-2xl outline-none text-xs sm:text-sm font-medium focus:border-slate-800 focus:bg-white focus:ring-4 focus:ring-slate-100 transition-all"
                                     value={formData.password}
                                     onChange={(e) => setFormData({...formData, password: e.target.value})}
                                 />
@@ -87,7 +90,7 @@ const Login = ({ onLoginSuccess }) => {
                         <button 
                             type="submit" 
                             disabled={isLoading}
-                            className="w-full bg-slate-800 text-white py-3.5 sm:py-4 rounded-xl sm:rounded-2xl font-black text-[10px] sm:text-xs uppercase tracking-[0.15em] shadow-lg shadow-slate-200 hover:bg-slate-900 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:bg-slate-200 mt-2 sm:mt-0"
+                            className="w-full bg-slate-800 text-white py-3.5 sm:py-4 rounded-xl sm:rounded-2xl font-black text-[10px] sm:text-xs uppercase tracking-[0.15em] shadow-lg shadow-slate-300 hover:bg-slate-900 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:bg-slate-200 mt-2 sm:mt-0"
                         >
                             {isLoading ? <Loader2 className="animate-spin" size={16}/> : <LogIn size={16}/>}
                             {isLoading ? 'Authenticating...' : 'Access System'}

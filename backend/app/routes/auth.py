@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+import os
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy.orm import Session
 from app.config.database import get_db
 from app.models.user import User
@@ -12,7 +13,7 @@ class LoginRequest(BaseModel):
     password: str
 
 @router.post("/login")
-def login(req: LoginRequest, db: Session = Depends(get_db)):
+def login(req: LoginRequest, response: Response, db: Session = Depends(get_db)):
     # 1. Check if user exists
     user = db.query(User).filter(User.email == req.email).first()
     if not user:
@@ -38,10 +39,36 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
     # 4. Generate Token
     access_token = create_access_token(data={"sub": user.email, "role": user.role})
     
+    # 5. Environment Check for Secure Cookie Flag
+    # If RENDER exists, we are on Render (HTTPS). If not, localhost (HTTP).
+    is_production = os.getenv("RENDER") is not None
+
+    # 6. Set the Highly Secure HttpOnly Cookie
+    response.set_cookie(
+        key="access_token",
+        value=f"Bearer {access_token}",
+        httponly=True,          # Prevents Cross-Site Scripting (XSS)
+        secure=is_production,   # True on Render, False on localhost
+        samesite="lax",         # Prevents Cross-Site Request Forgery (CSRF)
+        max_age=120 * 60        # Token expires in 2 hours
+    )
+    
+    # 7. Return UI Data (Notice we no longer return the access_token here!)
     return {
-        "access_token": access_token,
-        "token_type": "bearer",
+        "message": "Login successful",
         "user_id": user.user_id, # REQUIRED for WebSocket
         "role": user.role,
         "full_name": user.full_name
     }
+
+@router.post("/logout")
+def logout(response: Response):
+    """Clears the HttpOnly cookie to securely log the user out."""
+    is_production = os.getenv("RENDER") is not None
+    response.delete_cookie(
+        key="access_token",
+        httponly=True,
+        secure=is_production,
+        samesite="lax"
+    )
+    return {"message": "Successfully logged out"}
