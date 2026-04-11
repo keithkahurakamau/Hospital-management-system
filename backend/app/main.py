@@ -5,8 +5,6 @@ from app.config.database import engine, Base
 
 # =======================================================================
 # --- CRITICAL: MODEL REGISTRATION ---
-# We must import ALL models here so SQLAlchemy registers them 
-# before calling Base.metadata.create_all(bind=engine)
 # =======================================================================
 from app.models.user import User
 from app.models.patient import Patient
@@ -16,8 +14,6 @@ from app.models.medical_record import MedicalRecord
 from app.models.pharmacy import DrugInventory, DispenseLog
 from app.models.bed import Bed
 from app.models.doctor import Doctor
-
-# --- NEW: Phase 1 & 2 Models ---
 from app.models.laboratory import LabTest, LabTestCatalog, LabTestRequiredItem
 from app.models.inventory import Location, InventoryItem, StockBatch, InventoryUsageLog
 from app.models.billing import Billing, InvoiceItem
@@ -44,7 +40,6 @@ from app.routes.admin import router as admin_router
 from app.core.websocket import manager
 
 # --- DATABASE INITIALIZATION ---
-# This physically builds the tables and foreign key relationships in Postgres
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
@@ -63,16 +58,19 @@ async def add_process_time_header(request, call_next):
     return response
 
 # --- SECURITY & CORS ---
+# Explicit exact matches
 origins = [
     "http://localhost:5173",  
     "http://127.0.0.1:5173",
     "http://localhost:3000",
-    "https://hospital-management-system-7e9s.vercel.app/"
+    "https://hospital-management-system-7e9s.vercel.app" # REMOVED the trailing slash!
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    # This regex automatically allows ALL Vercel preview branches for your specific app!
+    allow_origin_regex=r"https://hospital-management-system-.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -84,7 +82,6 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int):
     await manager.connect(user_id, websocket)
     try:
         while True:
-            # Keep the tunnel open
             await websocket.receive_text() 
     except WebSocketDisconnect:
         manager.disconnect(user_id)

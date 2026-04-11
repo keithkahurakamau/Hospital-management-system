@@ -5,7 +5,8 @@ import axios from 'axios';
  * Now optimized for HttpOnly Cookie Security.
  */
 const api = axios.create({
-    baseURL: import.meta.env.VITE_API_URL || 'https://medicare-backend-u7r1.onrender.com',
+    // 👇 ADDED /api TO THE END 👇
+    baseURL: import.meta.env.VITE_API_URL || 'https://medicare-backend-u7r1.onrender.com/api',
     headers: {
         'Content-Type': 'application/json'
     },
@@ -13,12 +14,7 @@ const api = axios.create({
     withCredentials: true 
 });
 
-// --- We DELETED the request interceptor! ---
-// The browser will automatically attach the HttpOnly cookie to every request for us.
-// We no longer need to pull it from sessionStorage.
-
 // --- RESPONSE INTERCEPTOR ---
-// Still needed to handle 401s and kick the user back to the login screen
 api.interceptors.response.use(
     (response) => response,
     (error) => {
