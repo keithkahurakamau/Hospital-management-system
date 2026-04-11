@@ -1,11 +1,12 @@
 import os
-from fastapi import APIRouter, Depends, HTTPException, status, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from app.config.database import get_db
 from app.models.user import User
 from app.core.security import verify_password, create_access_token, get_password_hash 
+from app.core.limiter import limiter # 🚨 Added Limiter Import
 
 router = APIRouter(prefix="/api/auth", tags=["Security"])
 
@@ -14,7 +15,8 @@ class LoginRequest(BaseModel):
     password: str
 
 @router.post("/login")
-def login(req: LoginRequest, response: Response, db: Session = Depends(get_db)):
+@limiter.limit("5/minute") # 🚨 The Brute-Force Shield! Max 5 attempts per minute per IP.
+def login(request: Request, req: LoginRequest, response: Response, db: Session = Depends(get_db)):
     # 1. Check if user exists
     user = db.query(User).filter(User.email == req.email).first()
     if not user:

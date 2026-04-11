@@ -2,6 +2,12 @@ import time
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from app.config.database import engine, Base
+import jwt
+from fastapi import status
+from slowapi.errors import RateLimitExceeded
+from slowapi import _rate_limit_exceeded_handler
+
+
 
 # =======================================================================
 # --- CRITICAL: MODEL REGISTRATION ---
@@ -17,6 +23,8 @@ from app.models.doctor import Doctor
 from app.models.laboratory import LabTest, LabTestCatalog, LabTestRequiredItem
 from app.models.inventory import Location, InventoryItem, StockBatch, InventoryUsageLog
 from app.models.billing import Billing, InvoiceItem
+from app.core.security import SECRET_KEY, ALGORITHM
+from app.core.limiter import limiter
 # =======================================================================
 
 # --- ROUTER IMPORTS ---

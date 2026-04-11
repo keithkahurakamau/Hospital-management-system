@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import api from '../api/axiosConfig';
-import { LogIn, Lock, Mail, AlertCircle, Activity, Loader2 } from 'lucide-react';
+import { LogIn, Lock, Mail, AlertCircle, Activity, Loader2, Eye, EyeOff } from 'lucide-react'; // 🚨 Added Eye & EyeOff
 
 const Login = ({ onLoginSuccess }) => {
     const [formData, setFormData] = useState({ email: '', password: '' });
     const [error, setError] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
+    
+    // 🚨 NEW TOGGLE STATE 🚨
+    const [showPassword, setShowPassword] = useState(false);
 
     const handleSubmit = async (e) => {
         e.preventDefault(); 
@@ -77,13 +80,24 @@ const Login = ({ onLoginSuccess }) => {
                             <div className="relative group">
                                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-slate-800 transition-colors sm:w-[18px] sm:h-[18px]" size={16} />
                                 <input 
-                                    type="password" 
+                                    // 🚨 Dynamic Type Switching 🚨
+                                    type={showPassword ? "text" : "password"} 
                                     required
                                     placeholder="••••••••"
-                                    className="w-full pl-11 sm:pl-12 pr-4 py-3.5 sm:py-4 bg-slate-50 border border-slate-200 rounded-xl sm:rounded-2xl outline-none text-xs sm:text-sm font-medium focus:border-slate-800 focus:bg-white focus:ring-4 focus:ring-slate-100 transition-all"
+                                    // Notice pr-12 below so text doesn't hit the eye icon
+                                    className="w-full pl-11 sm:pl-12 pr-12 py-3.5 sm:py-4 bg-slate-50 border border-slate-200 rounded-xl sm:rounded-2xl outline-none text-xs sm:text-sm font-medium focus:border-slate-800 focus:bg-white focus:ring-4 focus:ring-slate-100 transition-all"
                                     value={formData.password}
                                     onChange={(e) => setFormData({...formData, password: e.target.value})}
                                 />
+                                
+                                {/* 🚨 The Eye Button 🚨 */}
+                                <button 
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-600 focus:outline-none transition-colors"
+                                >
+                                    {showPassword ? <EyeOff size={16} className="sm:w-[18px] sm:h-[18px]" /> : <Eye size={16} className="sm:w-[18px] sm:h-[18px]" />}
+                                </button>
                             </div>
                         </div>
 
