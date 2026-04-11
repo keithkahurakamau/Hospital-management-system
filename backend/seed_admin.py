@@ -7,7 +7,7 @@ def seed_database():
     db = SessionLocal()
     
     try:
-        admin_email = "admin@medicare.io"
+        admin_email = "keith.kamau@medicare.co.ke"
         
         # 2. Check if the admin already exists so we don't create duplicates
         existing_admin = db.query(User).filter(User.email == admin_email).first()
@@ -20,7 +20,7 @@ def seed_database():
         # 3. Create the User object
         # We use get_password_hash to ensure it matches the bcrypt verification in auth.py
         admin_user = User(
-            full_name="System Administrator",
+            full_name="Keith Kamau",
             email=admin_email,
             hashed_password=get_password_hash("Admin@2026!"), # Strong test password
             role="ADMIN", 
