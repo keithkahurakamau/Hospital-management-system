@@ -1,14 +1,11 @@
 import os
 from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
+
 from app.config.database import get_db
 from app.models.user import User
-from app.core.security import verify_password, create_access_token
-from pydantic import BaseModel
-from app.core.security import get_password_hash 
-
-# Add this if it's missing (it tells Python what a User is)
-from app.models.user import User
+from app.core.security import verify_password, create_access_token, get_password_hash 
 
 router = APIRouter(prefix="/api/auth", tags=["Security"])
 
@@ -43,21 +40,18 @@ def login(req: LoginRequest, response: Response, db: Session = Depends(get_db)):
     # 4. Generate Token
     access_token = create_access_token(data={"sub": user.email, "role": user.role})
     
-    # 5. Environment Check for Secure Cookie Flag
-    # If RENDER exists, we are on Render (HTTPS). If not, localhost (HTTP).
-    is_production = os.getenv("RENDER") is not None
-
-    # 6. Set the Highly Secure HttpOnly Cookie
+    # 5. Set the Highly Secure HttpOnly Cookie
+    # 🚨 CRITICAL: samesite="none" and secure=True are REQUIRED for Vercel -> Render
     response.set_cookie(
         key="access_token",
         value=f"Bearer {access_token}",
         httponly=True,          # Prevents Cross-Site Scripting (XSS)
-        secure=is_production,   # True on Render, False on localhost
-        samesite="lax",         # Prevents Cross-Site Request Forgery (CSRF)
+        secure=True,            # MUST BE TRUE for cross-domain cookies (HTTPS)
+        samesite="none",        # MUST BE "none" to allow cross-site cookie sharing
         max_age=120 * 60        # Token expires in 2 hours
     )
     
-    # 7. Return UI Data (Notice we no longer return the access_token here!)
+    # 6. Return UI Data
     return {
         "message": "Login successful",
         "user_id": user.user_id, # REQUIRED for WebSocket
@@ -68,14 +62,15 @@ def login(req: LoginRequest, response: Response, db: Session = Depends(get_db)):
 @router.post("/logout")
 def logout(response: Response):
     """Clears the HttpOnly cookie to securely log the user out."""
-    is_production = os.getenv("RENDER") is not None
+    # 🚨 CRITICAL: Deletion rules must match creation rules exactly
     response.delete_cookie(
         key="access_token",
         httponly=True,
-        secure=is_production,
-        samesite="lax"
+        secure=True,
+        samesite="none"
     )
     return {"message": "Successfully logged out"}
+
 @router.get("/seed-admin-secret-url")
 def seed_admin_account(db: Session = Depends(get_db)):
     """Temporary backdoor to seed the admin account without Render Shell."""
