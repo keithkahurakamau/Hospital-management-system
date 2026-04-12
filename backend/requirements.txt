@@ -16,7 +16,6 @@ greenlet==3.3.2
 h11==0.16.0
 httptools==0.7.1
 idna==3.11
-jwt==1.4.0
 limits==5.8.0
 packaging==26.0
 passlib==1.7.4
