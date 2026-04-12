@@ -3,7 +3,8 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import api from '../api/axiosConfig';
 import { 
   LayoutDashboard, Users, UserRound, FileClock, ShieldCheck, 
-  CreditCard, Pill, FlaskConical, LogOut, Activity, Search, CalendarDays, PackageSearch, BedDouble, Menu, X, DollarSign
+  CreditCard, Pill, FlaskConical, LogOut, Activity, Search, 
+  CalendarDays, PackageSearch, BedDouble, Menu, X, DollarSign, Settings // 🚨 Added Settings icon
 } from 'lucide-react';
 
 const Layout = ({ children, setIsAuthenticated }) => {
@@ -70,6 +71,8 @@ const Layout = ({ children, setIsAuthenticated }) => {
     { path: '/lab', label: 'Laboratory', icon: FlaskConical, perm: 'manage_labs' },
     { path: '/users', label: 'Access Control', icon: ShieldCheck, perm: 'manage_users' },
     { path: '/admin/pricing', label: 'Service Pricing', icon: DollarSign, perm: 'manage_users' },
+    // 🚨 NEW SETTINGS ROUTE (Available to everyone) 🚨
+    { path: '/settings', label: 'System Settings', icon: Settings, public: true },
   ];
 
   const filteredMenu = menuItems.filter(item => 
@@ -84,9 +87,7 @@ const Layout = ({ children, setIsAuthenticated }) => {
         <div className="fixed inset-0 bg-slate-900/50 z-40 lg:hidden backdrop-blur-sm" onClick={() => setIsMobileMenuOpen(false)} />
       )}
 
-      {/* SIDEBAR (Responsive) 
-        NOTE: Added `lg:z-0` so the sidebar sits properly in the background on desktop
-      */}
+      {/* SIDEBAR (Responsive) */}
       <aside className={`fixed inset-y-0 left-0 z-50 lg:z-0 w-72 bg-white border-r border-slate-200 flex flex-col justify-between shadow-2xl lg:shadow-sm transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div>
             <div className="p-6 lg:p-8 flex items-center justify-between">
@@ -125,9 +126,7 @@ const Layout = ({ children, setIsAuthenticated }) => {
         </div>
       </aside>
 
-      {/* MAIN CONTENT AREA 
-        NOTE: Added `relative z-10` to elevate main content above the sidebar on desktop 
-      */}
+      {/* MAIN CONTENT AREA */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative z-10">
         <header className="h-16 lg:h-20 flex items-center justify-between px-4 lg:px-8 bg-transparent shrink-0">
           <div className="flex items-center gap-3">

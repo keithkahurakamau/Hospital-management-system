@@ -43,6 +43,7 @@ from app.routes.auth import router as auth_router
 from app.routes.clinical import router as clinical_router
 from app.routes.users import router as users_router
 from app.routes.admin import router as admin_router
+from app.routes.dashboard import router as dashboard_router
 
 # --- CORE UTILS ---
 from app.core.websocket import manager
@@ -110,6 +111,7 @@ app.include_router(websocket_router)
 app.include_router(queue_router) 
 app.include_router(clinical_router) 
 app.include_router(admin_router)
+app.include_router(dashboard_router)
 
 @app.get("/")
 async def root():
