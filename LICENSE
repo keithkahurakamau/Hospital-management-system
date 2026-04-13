@@ -1,102 +1,19 @@
-Medicare ERP v1.0.0 — First Version Release
-This is the inaugural release of Medicare ERP, a full-stack Hospital Management System (HMS) built with a decoupled client-server architecture. The app version is explicitly set to "1.0.0" in the FastAPI entrypoint. main.py:54-58
+Copyright (c) 2026 Eng. Kamau Keith Kahura. All Rights Reserved.
 
-The project spans 26 commits from the initial commit on 2026-03-17 to the latest on 2026-04-13.
+This software and its associated documentation files (the "Software"), including but not limited to all source code, object code, designs, algorithms, data structures, user interfaces, and documentation, are the exclusive intellectual property of Eng. Kamau Keith Kahura (the "Owner").
 
-Technology Stack
-Layer	Technology
-Backend	Python / FastAPI (async)
-Frontend	React / Vite + Tailwind CSS
-Database	PostgreSQL via SQLAlchemy ORM
-Real-time	WebSockets (native FastAPI)
-Payments	M-PESA Daraja API integration
-Auth	JWT + secure HTTP-only cookies
-Rate Limiting	SlowAPI
-Backend: 13 Data Models
-The relational schema covers the full hospital domain, registered in backend/app/main.py: main.py:15-27
+No Permission Granted. No part of this Software may be used, copied, modified, merged, published, distributed, sublicensed, sold, reproduced, or transmitted in any form or by any means — electronic, mechanical, photocopying, recording, or otherwise — without the prior written consent of the Owner.
 
-Model	File	Purpose
-User	backend/app/models/user.py	Staff accounts with RBAC roles (e.g. DOCTOR, SECRETARY)
-Patient	backend/app/models/patient.py	Patient demographics & registration
-Appointment	backend/app/models/appointment.py	Scheduling
-PatientQueue	backend/app/models/queue.py	Triage queue management
-MedicalRecord	backend/app/models/medical_record.py	Clinical consultation notes
-Doctor	backend/app/models/doctor.py	Doctor profiles
-Bed	backend/app/models/bed.py	Inpatient bed tracking
-DrugInventory / DispenseLog	backend/app/models/pharmacy.py	Pharmacy stock & POS dispensing
-LabTest / LabTestCatalog / LabTestRequiredItem	backend/app/models/laboratory.py	Lab test catalog, ordering, results, and inventory consumption
-Billing / InvoiceItem	backend/app/models/billing.py	Invoicing with line items, tax types (eTIMS-compliant), and universal linkers to any department
-Location / InventoryItem / StockBatch / InventoryUsageLog	backend/app/models/inventory.py	Multi-location inventory management
-Backend: 16 API Route Modules
-All registered via app.include_router(...): main.py:99-114
+Confidentiality. Any party granted access to this Software, whether through employment, contract, collaboration, or any other arrangement, agrees to treat the Software as confidential information and shall not disclose, share, or make available any portion of it to any third party without the Owner's explicit written authorization.
 
-auth, users, patients, appointments, doctors, billing, analytics, medical_records, pharmacy, beds, laboratory, websockets, queue, clinical, admin, dashboard
+No Reverse Engineering. Recipients of this Software shall not decompile, disassemble, reverse engineer, or attempt to derive the source code or underlying algorithms of the Software.
 
-Frontend: 16 Pages
-The React frontend in frontend/src/pages/ provides UI for every major workflow:
+No Warranty. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
 
-Page	Function
-Login.jsx	Authentication with password visibility toggle
-Dashboard.jsx	Worker dashboard with live clock, dynamic permission-based agenda
-AdminDashboard.jsx	Admin analytics & overview
-AdminPricing.jsx	Lab test catalog & pricing management
-Patients.jsx / PatientProfile.jsx	Patient registry & individual profiles
-Appointments.jsx	Scheduling
-ClinicalDesk.jsx	Triage, vitals, doctor consultations
-Laboratory.jsx	Lab test ordering & results
-Pharmacy.jsx	Drug inventory & POS dispensing
-Billing.jsx / BillingDesk.jsx	Invoice generation with M-PESA phone input
-Beds.jsx	Bed management
-Inventory.jsx	General inventory management
-Reports.jsx	Reporting
-UserManagement.jsx	Staff CRUD & role assignment
-A shared Layout.jsx component provides the navigation shell with permission-driven menu visibility. Layout.jsx:1
+Limitation of Liability. IN NO EVENT SHALL THE OWNER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-Key Features Delivered in v1.0.0
-Authentication & RBAC — JWT-based login with secure HTTP-only cookies, role-based access control, rate-limited login attempts. user.py:4-17
-Real-time notifications — WebSocket endpoint at /ws/notifications/{user_id} for live sync across departments. main.py:89-96
-Full patient lifecycle — Registration → Queue → Triage → Consultation → Lab → Pharmacy → Billing.
-Laboratory module — Catalog-driven test ordering with inventory consumption tracking and billed price lock-in at order time. laboratory.py:39-69
-Billing with M-PESA — Invoice items with universal linkers (item_type + reference_id) decoupling billing from specific modules, plus eTIMS tax compliance fields. billing.py:25-44
-Dynamic worker dashboard — Fetches permissions from DB and renders role-appropriate agenda. TODO.md:15-20
-Deployment — Backend on Render, frontend on Vercel (with preview branch CORS support). main.py:71-86
-Planned Next (Not Yet Implemented)
-Issue files in issues/ indicate upcoming epics for Insurance & Scheme Management (Epic 14) and Advanced Financial Management (Epic 15), plus a Triage Module (Epic 16) — these are roadmap items beyond v1.0.0.
+Termination. Any rights granted under a separate written agreement may be terminated by the Owner at any time. Upon termination, the recipient must destroy all copies of the Software in their possession.
 
+Governing Law. This license shall be governed by and construed in accordance with the laws of the Republic of Kenya.
 
-
-
-
-
-do it basic with no code just description in pure english
-
-
-Thinking process
-Medicare ERP — Version 1.0.0
-This is the first release of Medicare ERP, a hospital management system designed to digitize the day-to-day operations of a healthcare facility. It was built over roughly four weeks, from mid-March to mid-April 2026.
-
-What It Does
-The system covers the entire patient journey from the moment they walk into the hospital to the moment they pay their bill and leave. A patient is registered, placed in a queue, triaged by a nurse, seen by a doctor, sent for lab tests or prescriptions if needed, and finally billed at the cashier's desk.
-
-Who Uses It
-The system supports different types of hospital staff — doctors, secretaries, lab technicians, pharmacists, cashiers, and administrators. Each person only sees the parts of the system relevant to their job. An administrator can manage everything, while a secretary might only handle patient registration and appointments.
-
-Main Modules
-Authentication — Staff log in with an email and password. The system enforces security measures like rate-limited login attempts and secure session handling.
-Patient Registration — Recording patient demographics and creating their hospital profile.
-Appointments — Scheduling patient visits with doctors.
-Queue Management — Tracking which patients are waiting and in what order they should be seen.
-Clinical Desk — Where nurses record vitals and doctors conduct consultations and write clinical notes.
-Laboratory — Doctors can order lab tests from a predefined catalog. Lab technicians process the tests and enter results. The system tracks which supplies are consumed per test.
-Pharmacy — Managing drug stock and dispensing medication to patients, functioning like a point-of-sale system.
-Bed Management — Tracking which hospital beds are available, occupied, or reserved for inpatients.
-Billing — Generating invoices that pull charges from consultations, lab tests, and pharmacy dispensing into one bill. Supports mobile money payments through M-PESA.
-Inventory — General inventory tracking across multiple hospital locations, with batch-level stock management.
-Analytics and Reports — Dashboards and reports for administrators to monitor hospital performance.
-User Management — Administrators can create staff accounts, assign roles, and control permissions.
-Real-Time Notifications — When something happens in one department (like a lab result being completed), other relevant staff are notified instantly without needing to refresh their screen.
-How It Is Built
-The backend is a Python web server and the frontend is a React web application. The database is PostgreSQL. The backend is hosted on Render and the frontend is deployed on Vercel, making it accessible from any browser.
-
-What Comes Next
-The roadmap includes insurance and scheme management, advanced financial features, and a dedicated triage module — none of which are part of this first release.
+For licensing inquiries, contact: Eng. Kamau Keith Kahura
