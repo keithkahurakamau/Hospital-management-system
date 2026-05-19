@@ -15,7 +15,7 @@ fastapi==0.135.1
 greenlet==3.3.2
 h11==0.16.0
 httptools==0.7.1
-idna==3.11
+idna==3.15
 limits==5.8.0
 packaging==26.0
 passlib==1.7.4
